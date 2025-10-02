@@ -411,15 +411,49 @@ log "Updating working tree with sparse patterns"
   log "Working tree updated"
 )
 
-# LFS pull from outside to avoid directory issues
+# LFS fetch/checkout from outside to avoid directory issues while respecting sparse state
 if have git-lfs; then
-  log "Pulling LFS objects"
+  log "Fetching LFS objects without triggering smudge"
   (
     cd "$WORK_REPO"
-    GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git lfs pull
+    GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" GIT_LFS_SKIP_SMUDGE=1 git lfs fetch
   )
+
+  __lfs_paths=()
+  mapfile -t __lfs_paths < <(
+    cd "$WORK_REPO"
+    GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git lfs ls-files --name-only
+  )
+
+  if [ "${#__lfs_paths[@]}" -gt 0 ]; then
+    included_lfs_paths=()
+    for __path in "${__lfs_paths[@]}"; do
+      entry="$(
+        cd "$WORK_REPO"
+        GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git ls-files -v -- "$__path"
+      )"
+
+      [ -n "$entry" ] || continue
+      prefix="${entry%% *}"
+      if [ "$prefix" != "S" ]; then
+        included_lfs_paths+=("$__path")
+      fi
+    done
+
+    if [ "${#included_lfs_paths[@]}" -gt 0 ]; then
+      log "Checking out ${#included_lfs_paths[@]} LFS file(s) within sparse checkout"
+      (
+        cd "$WORK_REPO"
+        GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git lfs checkout -- "${included_lfs_paths[@]}"
+      )
+    else
+      log "No LFS paths intersect sparse checkout; skipping checkout step"
+    fi
+  else
+    log "No LFS-tracked paths detected"
+  fi
 else
-  log "git-lfs not installed; skipping LFS pull (pointer files remain)"
+  log "git-lfs not installed; skipping LFS fetch (pointer files remain)"
 fi
 
 # --- wrap-up -----------------------------------------------------------------
