@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # generate_sparse_list.sh — echo newline-separated sparse-checkout patterns for a given project tag
-# Usage: ./scripts/generate_sparse_list.sh P0010-snb
+# Usage: generate_sparse_list.sh P0010-snb
 # Interactive confirmation shows which tags were matched (including "global").
 # This version allows SUBSTRING matches for the user-provided TAG (e.g., TAG=P0010 matches token P0010-snb).
 
@@ -23,9 +23,9 @@ TAG="${1-}"; [ -n "$TAG" ] || oops "missing project tag argument"
 
 require_tools git awk
 
-# Find the repo root relative to the script location, not the current directory
-REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
-[ -n "$REPO_ROOT" ] || oops "script not inside a git repo"
+# Find the non-submodule repo root by searching up the filesystem
+REPO_ROOT="$(find_non_submodule_repo_root "$SCRIPT_DIR" || true)"
+[ -n "$REPO_ROOT" ] || oops "script not inside a non-submodule git repo"
 
 log "Scanning git attributes for tag '$TAG' (and 'global') in repo: $REPO_ROOT"
 

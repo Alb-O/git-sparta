@@ -52,3 +52,30 @@ run_in_dir() {
   shift
   ( cd "$dir" && "$@" )
 }
+
+# Find the non-submodule repo root by searching up the filesystem
+find_non_submodule_repo_root() {
+  local dir="$1"
+  while [ "$dir" != "/" ]; do
+    if [ -d "$dir/.git" ]; then
+      # Check if this is a submodule by looking for .git file (not directory)
+      # or by checking if .git/modules exists in parent
+      if [ -f "$dir/.git" ]; then
+        # This is a submodule, continue searching up
+        dir="$(dirname "$dir")"
+        continue
+      fi
+      # Check if we're in a submodule by asking git
+      if git -C "$dir" rev-parse --git-dir 2>/dev/null | grep -q "\.git/modules"; then
+        # This is a submodule, continue searching up
+        dir="$(dirname "$dir")"
+        continue
+      fi
+      # Found a non-submodule repo
+      printf '%s' "$dir"
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
