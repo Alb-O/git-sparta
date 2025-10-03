@@ -203,7 +203,7 @@ if [ -n "${SHARED_MIRROR_PATH:-}" ]; then
   fi
 fi
 
-# --- ensure BLENDERGLOB helper is present (if mirror is used) ----------------
+# --- ensure helper is present (if mirror is used) ----------------
 if [ "$use_reference" = "1" ]; then
   helper_script="$SHARED_MIRROR_PATH/$SPARSE_LIST_RELATIVE"
   
