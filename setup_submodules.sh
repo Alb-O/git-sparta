@@ -44,6 +44,16 @@ submodule_git() {
   run_in_dir "$SUBMODULE_PATH" git "$@"
 }
 
+ensure_branch_tracking() {
+  local target_commit="$1"
+
+  modules_git update-ref "refs/heads/$SUBMODULE_BRANCH" "$target_commit"
+  modules_git symbolic-ref HEAD "refs/heads/$SUBMODULE_BRANCH"
+
+  module_git config branch."$SUBMODULE_BRANCH".remote origin
+  module_git config branch."$SUBMODULE_BRANCH".merge "refs/heads/$SUBMODULE_BRANCH"
+}
+
 # --- utilities ---------------------------------------------------------------
 # Extract the FIRST object anywhere in a JSON file that has ALL required keys.
 extract_first_match_all_keys() {
@@ -380,6 +390,9 @@ else
   modules_git fetch --depth=1 origin "$SUBMODULE_BRANCH"
   modules_git update-ref HEAD FETCH_HEAD
 fi
+
+CURRENT_COMMIT="$(modules_git rev-parse HEAD)"
+ensure_branch_tracking "$CURRENT_COMMIT"
 
 # If submodule dir exists and has a git repo, ensure its origin URL matches our effective SUBMODULE_URL
 if [ -d "$SUBMODULE_PATH/.git" ]; then
