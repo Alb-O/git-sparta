@@ -327,6 +327,12 @@ if [ -d "$MODULES_PATH" ]; then
   modules_git config core.worktree "$SUBMODULE_PATH"
   log "Set core.bare=false and core.worktree=$SUBMODULE_PATH"
 
+  if [ ! -f "$SUBMODULE_PATH/.git" ]; then
+    RELATIVE_MODULES="$(realpath --relative-to="$SUBMODULE_PATH" "$MODULES_PATH")"
+    echo "gitdir: $RELATIVE_MODULES" > "$SUBMODULE_PATH/.git"
+    log "Restored .git file pointing to: $RELATIVE_MODULES"
+  fi
+
   if [ "$use_reference" = "1" ]; then
     mkdir -p "$MODULES_PATH/objects/info"
     if ! grep -q "$SHARED_MIRROR_PATH/.git/objects" "$MODULES_PATH/objects/info/alternates" 2>/dev/null; then
@@ -412,6 +418,9 @@ log "Updating working tree with sparse patterns"
 log "Running from: $WORK_REPO"
 module_git read-tree -mu HEAD
 log "Working tree updated"
+
+log "Materializing tracked files from sparse set"
+module_git checkout-index --all --force
 
 # LFS fetch/checkout from outside to avoid directory issues while respecting sparse state
 if have git-lfs; then
