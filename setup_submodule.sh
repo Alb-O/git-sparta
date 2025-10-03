@@ -50,8 +50,8 @@ ensure_branch_tracking() {
   modules_git update-ref "refs/heads/$SUBMODULE_BRANCH" "$target_commit"
   modules_git symbolic-ref HEAD "refs/heads/$SUBMODULE_BRANCH"
 
-  module_git config branch."$SUBMODULE_BRANCH".remote origin
-  module_git config branch."$SUBMODULE_BRANCH".merge "refs/heads/$SUBMODULE_BRANCH"
+  modules_git config branch."$SUBMODULE_BRANCH".remote origin
+  modules_git config branch."$SUBMODULE_BRANCH".merge "refs/heads/$SUBMODULE_BRANCH"
 }
 
 # --- utilities ---------------------------------------------------------------
@@ -315,18 +315,26 @@ log "Initializing submodule metadata"
 repo_git submodule init "$SUBMODULE_PATH_RELATIVE"
 
 # Determine the modules path - it might be in parent's modules or already exist
+MODULES_PATH="$GIT_ROOT/.git/modules/$SUBMODULE_PATH_RELATIVE"
 if [ -f "$SUBMODULE_PATH/.git" ]; then
-  # Extract gitdir path from .git file
   GITDIR_LINE="$(cat "$SUBMODULE_PATH/.git")"
   if [[ "$GITDIR_LINE" =~ gitdir:\ (.+) ]]; then
     RELATIVE_GITDIR="${BASH_REMATCH[1]}"
-    MODULES_PATH="$(cd "$SUBMODULE_PATH" && cd "$RELATIVE_GITDIR" && pwd)"
-    log "Found existing git directory at: $MODULES_PATH"
+    detected_path="$(cd "$SUBMODULE_PATH" && cd "$RELATIVE_GITDIR" && pwd)"
+    if [ -n "$detected_path" ]; then
+      MODULES_PATH="$detected_path"
+    fi
   fi
+fi
+
+mkdir -p "$(dirname "$MODULES_PATH")"
+
+if git --git-dir="$MODULES_PATH" rev-parse --git-dir >/dev/null 2>&1; then
+  log "Using existing git directory: $MODULES_PATH"
 else
-  # Create new modules path
-  MODULES_PATH="$GIT_ROOT/.git/modules/$SUBMODULE_PATH_RELATIVE"
-  log "Creating new git directory at: $MODULES_PATH"
+  log "Initializing git directory: $MODULES_PATH"
+  rm -rf "$MODULES_PATH"
+  git init -q --bare "$MODULES_PATH"
 fi
 
 # Ensure the modules directory is properly configured
@@ -375,20 +383,7 @@ if [ -d "$MODULES_PATH" ]; then
     modules_git update-ref HEAD FETCH_HEAD
   fi
 else
-  log "Git directory does not exist, creating: $MODULES_PATH"
-  mkdir -p "$(dirname "$MODULES_PATH")"
-  git init -q "$MODULES_PATH"
-  modules_git remote add origin "$SUBMODULE_URL"
-  modules_git config core.bare false
-  modules_git config core.worktree "$SUBMODULE_PATH"
-
-  RELATIVE_MODULES="$(realpath --relative-to="$SUBMODULE_PATH" "$MODULES_PATH")"
-  echo "gitdir: $RELATIVE_MODULES" > "$SUBMODULE_PATH/.git"
-  log "Created .git file pointing to: $RELATIVE_MODULES"
-
-  log "Fetching branch $SUBMODULE_BRANCH"
-  modules_git fetch --depth=1 origin "$SUBMODULE_BRANCH"
-  modules_git update-ref HEAD FETCH_HEAD
+  oops "Failed to prepare modules git directory at $MODULES_PATH"
 fi
 
 CURRENT_COMMIT="$(modules_git rev-parse HEAD)"
