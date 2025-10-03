@@ -14,14 +14,35 @@
 # Idempotent; safe to re-run anytime.
 set -euo pipefail
 
-# --- common helpers ----------------------------------------------------------
-log()  { [ "${VERBOSE:-0}" = "1" ] && printf '%s\n' "$*" >&2 || :; }
-oops() { printf '%s: %s\n' "${0##*/}" "$*" >&2; exit 1; }
-have() { command -v "$1" >/dev/null 2>&1; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="$SCRIPT_DIR/lib"
+SPARSE_LIST_RELATIVE="pipeline/generate_sparse_list.sh"
 
-have git || oops "git not found"
-have jq  || oops "jq not found (needed to read project JSON config)"
-have sed || oops "sed not found"
+if [ ! -f "$LIB_DIR/common.sh" ]; then
+  printf '%s: helper library missing at %s\n' "${0##*/}" "$LIB_DIR/common.sh" >&2
+  exit 1
+fi
+
+# shellcheck source=lib/common.sh
+source "$LIB_DIR/common.sh"
+
+require_tools git jq sed
+
+repo_git() {
+  run_in_dir "$WORK_REPO" git "$@"
+}
+
+modules_git() {
+  run_in_dir "$MODULES_PATH" git "$@"
+}
+
+module_git() {
+  run_in_dir "$WORK_REPO" env GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git "$@"
+}
+
+submodule_git() {
+  run_in_dir "$SUBMODULE_PATH" git "$@"
+}
 
 # --- utilities ---------------------------------------------------------------
 # Extract the FIRST object anywhere in a JSON file that has ALL required keys.
@@ -79,7 +100,6 @@ else
 fi
 
 # --- determine script and config location ------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Assume config is in parent directory of script (script in proj-scripts/, config in parent)
 CONFIG_DIR="$(dirname "$SCRIPT_DIR")"
 log "Script dir: $SCRIPT_DIR"
@@ -175,7 +195,7 @@ fi
 
 # --- ensure BLENDERGLOB helper is present (if mirror is used) ----------------
 if [ "$use_reference" = "1" ]; then
-  helper_script="$SHARED_MIRROR_PATH/scripts/generate_sparse_list.sh"
+  helper_script="$SHARED_MIRROR_PATH/$SPARSE_LIST_RELATIVE"
   
   # Check if the script exists first
   if [ ! -f "$helper_script" ]; then
@@ -198,7 +218,7 @@ if ! git config --file "$GITMODULES_FILE" --get-regexp "submodule.${SUBMODULE_NA
   git config -f "$GITMODULES_FILE" "submodule.${SUBMODULE_NAME}.path"   "$SUBMODULE_PATH_RELATIVE"
   git config -f "$GITMODULES_FILE" "submodule.${SUBMODULE_NAME}.url"    "$SUBMODULE_URL"
   git config -f "$GITMODULES_FILE" "submodule.${SUBMODULE_NAME}.branch" "$SUBMODULE_BRANCH"
-  ( cd "$WORK_REPO" && git add .gitmodules )
+  repo_git add .gitmodules
   FIRST_TIME_SETUP=1
 else
   # sanity-check path and update URL/branch if changed (supports per-dev URL override)
@@ -210,14 +230,14 @@ else
   if [ "$reg_url" != "$SUBMODULE_URL" ]; then
     log "Updating .gitmodules URL: $reg_url -> $SUBMODULE_URL"
     git config -f "$GITMODULES_FILE" "submodule.${SUBMODULE_NAME}.url" "$SUBMODULE_URL"
-    ( cd "$WORK_REPO" && git add .gitmodules )
+    repo_git add .gitmodules
   fi
 
   reg_branch="$(git config --file "$GITMODULES_FILE" "submodule.${SUBMODULE_NAME}.branch" || true)"
   if [ -n "$SUBMODULE_BRANCH" ] && [ "$reg_branch" != "$SUBMODULE_BRANCH" ]; then
     log "Updating .gitmodules branch: $reg_branch -> $SUBMODULE_BRANCH"
     git config -f "$GITMODULES_FILE" "submodule.${SUBMODULE_NAME}.branch" "$SUBMODULE_BRANCH"
-    ( cd "$WORK_REPO" && git add .gitmodules )
+    repo_git add .gitmodules
   fi
 fi
 
@@ -226,7 +246,7 @@ SPARSE_LIST_FILE="$(mktemp)"; trap 'rm -f "$SPARSE_LIST_FILE"' EXIT
 
 if [ "$use_reference" = "1" ]; then
   log "Generating sparse list via mirror"
-  ( VERBOSE="${VERBOSE:-0}" "$SHARED_MIRROR_PATH/scripts/generate_sparse_list.sh" "$PROJECT_TAG" ) >"$SPARSE_LIST_FILE"
+  env VERBOSE="${VERBOSE:-0}" "$SHARED_MIRROR_PATH/$SPARSE_LIST_RELATIVE" "$PROJECT_TAG" >"$SPARSE_LIST_FILE"
 else
   log "No mirror: will generate sparse list *after* metadata clone"
 fi
@@ -235,12 +255,12 @@ fi
 # Ensure submodule.$name.url in local .git/config reflects our effective URL, so update uses it.
 # Work from the WORK_REPO directory
 log "Syncing local .git config with effective submodule URL"
-( cd "$WORK_REPO" && git config "submodule.${SUBMODULE_NAME}.url" "$SUBMODULE_URL" )
+repo_git config "submodule.${SUBMODULE_NAME}.url" "$SUBMODULE_URL"
 
 # Check if the submodule path exists in git's index
 # If not, we need to add it first (even if .gitmodules exists)
 GITLINK_EXISTS=0
-if ( cd "$WORK_REPO" && git ls-files --stage "$SUBMODULE_PATH_RELATIVE" | grep -q '^160000' ); then
+if repo_git ls-files --stage "$SUBMODULE_PATH_RELATIVE" | grep -q '^160000'; then
   GITLINK_EXISTS=1
   log "Gitlink already exists in index"
 else
@@ -252,8 +272,8 @@ else
   
   # Initialize a minimal git repo at the submodule path
   if [ ! -d "$SUBMODULE_PATH/.git" ] && [ ! -f "$SUBMODULE_PATH/.git" ]; then
-    ( cd "$SUBMODULE_PATH" && git init -q )
-    ( cd "$SUBMODULE_PATH" && git remote add origin "$SUBMODULE_URL" )
+    submodule_git init -q
+    submodule_git remote add origin "$SUBMODULE_URL"
     
     # If using mirror, set up alternates to use objects from mirror
     if [ "$use_reference" = "1" ]; then
@@ -265,24 +285,24 @@ else
   
   # Fetch just the branch ref without checking out
   log "Fetching remote ref for branch: $SUBMODULE_BRANCH"
-  ( cd "$SUBMODULE_PATH" && git fetch --depth=1 origin "$SUBMODULE_BRANCH" )
+  submodule_git fetch --depth=1 origin "$SUBMODULE_BRANCH"
   
   # Get the commit SHA
-  COMMIT_SHA="$( cd "$SUBMODULE_PATH" && git rev-parse FETCH_HEAD )"
+  COMMIT_SHA="$(submodule_git rev-parse FETCH_HEAD)"
   log "Fetched commit: $COMMIT_SHA"
   
   # Remove the .git directory temporarily to add as gitlink
   rm -rf "$SUBMODULE_PATH/.git"
   
   # Create a gitlink entry in the index using git update-index
-  ( cd "$WORK_REPO" && git update-index --add --cacheinfo 160000 "$COMMIT_SHA" "$SUBMODULE_PATH_RELATIVE" )
+  repo_git update-index --add --cacheinfo 160000 "$COMMIT_SHA" "$SUBMODULE_PATH_RELATIVE"
   log "Added gitlink to index"
 fi
 
 mkdir -p "$SUBMODULE_PATH"
 log "Initializing submodule metadata"
 # git submodule init will set up the config without checking out
-( cd "$WORK_REPO" && git submodule init "$SUBMODULE_PATH_RELATIVE" )
+repo_git submodule init "$SUBMODULE_PATH_RELATIVE"
 
 # Determine the modules path - it might be in parent's modules or already exist
 if [ -f "$SUBMODULE_PATH/.git" ]; then
@@ -302,13 +322,11 @@ fi
 # Ensure the modules directory is properly configured
 if [ -d "$MODULES_PATH" ]; then
   log "Configuring git directory: $MODULES_PATH"
-  
-  # Make sure it's not bare and has a worktree
-  ( cd "$MODULES_PATH" && git config core.bare false )
-  ( cd "$MODULES_PATH" && git config core.worktree "$SUBMODULE_PATH" )
+
+  modules_git config core.bare false
+  modules_git config core.worktree "$SUBMODULE_PATH"
   log "Set core.bare=false and core.worktree=$SUBMODULE_PATH"
-  
-  # Set up alternates if using mirror and not already set
+
   if [ "$use_reference" = "1" ]; then
     mkdir -p "$MODULES_PATH/objects/info"
     if ! grep -q "$SHARED_MIRROR_PATH/.git/objects" "$MODULES_PATH/objects/info/alternates" 2>/dev/null; then
@@ -316,64 +334,59 @@ if [ -d "$MODULES_PATH" ]; then
       log "Configured alternates for mirror"
     fi
   fi
-  
-  # Ensure we have the remote configured
-  if ! ( cd "$MODULES_PATH" && git remote get-url origin >/dev/null 2>&1 ); then
-    ( cd "$MODULES_PATH" && git remote add origin "$SUBMODULE_URL" )
+
+  if ! modules_git remote get-url origin >/dev/null 2>&1; then
+    modules_git remote add origin "$SUBMODULE_URL"
     log "Added remote origin"
   fi
-  
-  # Fetch if we don't have the commit we need
-  COMMIT_SHA="$( cd "$WORK_REPO" && git ls-files --stage "$SUBMODULE_PATH_RELATIVE" | awk '{print $2}' )"
+
+  COMMIT_SHA="$(repo_git ls-files --stage "$SUBMODULE_PATH_RELATIVE" | awk '{print $2}')"
   if [ -n "$COMMIT_SHA" ]; then
-    if ! ( cd "$MODULES_PATH" && git cat-file -e "$COMMIT_SHA" 2>/dev/null ); then
+    if ! modules_git cat-file -e "$COMMIT_SHA" 2>/dev/null; then
       log "Fetching commit $COMMIT_SHA"
-      ( cd "$MODULES_PATH" && git fetch --depth=1 origin "$SUBMODULE_BRANCH" )
+      modules_git fetch --depth=1 origin "$SUBMODULE_BRANCH"
     else
       log "Commit $COMMIT_SHA already exists in repository"
     fi
-    
-    # Set HEAD to point to the commit
+
     if [ ! -f "$MODULES_PATH/HEAD" ] || ! grep -q "^$COMMIT_SHA" "$MODULES_PATH/HEAD" 2>/dev/null; then
       log "Setting HEAD to $COMMIT_SHA"
-      ( cd "$MODULES_PATH" && git update-ref HEAD "$COMMIT_SHA" )
+      modules_git update-ref HEAD "$COMMIT_SHA"
     fi
   else
     log "Warning: No commit SHA found in gitlink, fetching branch head"
-    ( cd "$MODULES_PATH" && git fetch --depth=1 origin "$SUBMODULE_BRANCH" )
-    ( cd "$MODULES_PATH" && git update-ref HEAD FETCH_HEAD )
+    modules_git fetch --depth=1 origin "$SUBMODULE_BRANCH"
+    modules_git update-ref HEAD FETCH_HEAD
   fi
 else
   log "Git directory does not exist, creating: $MODULES_PATH"
   mkdir -p "$(dirname "$MODULES_PATH")"
   git init -q "$MODULES_PATH"
-  ( cd "$MODULES_PATH" && git remote add origin "$SUBMODULE_URL" )
-  ( cd "$MODULES_PATH" && git config core.bare false )
-  ( cd "$MODULES_PATH" && git config core.worktree "$SUBMODULE_PATH" )
-  
-  # Create the .git file
+  modules_git remote add origin "$SUBMODULE_URL"
+  modules_git config core.bare false
+  modules_git config core.worktree "$SUBMODULE_PATH"
+
   RELATIVE_MODULES="$(realpath --relative-to="$SUBMODULE_PATH" "$MODULES_PATH")"
   echo "gitdir: $RELATIVE_MODULES" > "$SUBMODULE_PATH/.git"
   log "Created .git file pointing to: $RELATIVE_MODULES"
-  
-  # Fetch and set HEAD
+
   log "Fetching branch $SUBMODULE_BRANCH"
-  ( cd "$MODULES_PATH" && git fetch --depth=1 origin "$SUBMODULE_BRANCH" )
-  ( cd "$MODULES_PATH" && git update-ref HEAD FETCH_HEAD )
+  modules_git fetch --depth=1 origin "$SUBMODULE_BRANCH"
+  modules_git update-ref HEAD FETCH_HEAD
 fi
 
 # If submodule dir exists and has a git repo, ensure its origin URL matches our effective SUBMODULE_URL
 if [ -d "$SUBMODULE_PATH/.git" ]; then
-  ( cd "$SUBMODULE_PATH" && git remote set-url origin "$SUBMODULE_URL" ) || :
+  submodule_git remote set-url origin "$SUBMODULE_URL" || :
 fi
 
 # If no mirror, generate sparse patterns using helper inside the submodule
 if [ "$use_reference" = "0" ]; then
-  if [ -x "$SUBMODULE_PATH/scripts/generate_sparse_list.sh" ]; then
+  if [ -x "$SUBMODULE_PATH/$SPARSE_LIST_RELATIVE" ]; then
     log "Generating sparse list from submodule clone"
-    ( cd "$SUBMODULE_PATH" && VERBOSE="${VERBOSE:-0}" ./scripts/generate_sparse_list.sh "$PROJECT_TAG" ) >"$SPARSE_LIST_FILE"
+    run_in_dir "$SUBMODULE_PATH" env VERBOSE="${VERBOSE:-0}" "$SUBMODULE_PATH/$SPARSE_LIST_RELATIVE" "$PROJECT_TAG" >"$SPARSE_LIST_FILE"
   else
-    oops "generate_sparse_list.sh not found in submodule and mirror not set"
+    oops "$SPARSE_LIST_RELATIVE not found in submodule and mirror not set"
   fi
 fi
 
@@ -382,56 +395,36 @@ log "Applying sparse-checkout rules"
 
 # Work from outside the submodule to avoid directory deletion issues
 log "Configuring sparse checkout in git directory: $MODULES_PATH"
-(
-  cd "$MODULES_PATH"
-  
-  log "Enabling sparse checkout"
-  git config core.sparseCheckout true
-  
-  log "Writing sparse-checkout patterns to info/sparse-checkout"
-  mkdir -p info
-  cp "$SPARSE_LIST_FILE" info/sparse-checkout
-  
-  log "Patterns count: $(wc -l < info/sparse-checkout)"
-  
-  # Show first few patterns for debugging
-  log "First 5 patterns:"
-  head -5 info/sparse-checkout | while read line; do log "  $line"; done
-)
+modules_git config core.sparseCheckout true
+run_in_dir "$MODULES_PATH" mkdir -p info
+run_in_dir "$MODULES_PATH" cp "$SPARSE_LIST_FILE" info/sparse-checkout
 
-# Now update the working tree from outside the submodule directory
+pattern_count="$(run_in_dir "$MODULES_PATH" awk 'END {print NR}' info/sparse-checkout)"
+log "Patterns count: $pattern_count"
+
+log "First 5 patterns:"
+mapfile -t __pattern_preview < <(run_in_dir "$MODULES_PATH" head -5 info/sparse-checkout)
+for line in "${__pattern_preview[@]}"; do
+  log "  $line"
+done
+
 log "Updating working tree with sparse patterns"
-(
-  cd "$WORK_REPO"
-  log "Running from: $(pwd)"
-  
-  # Use git's --work-tree and --git-dir to operate on the submodule
-  GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git read-tree -mu HEAD
-  
-  log "Working tree updated"
-)
+log "Running from: $WORK_REPO"
+module_git read-tree -mu HEAD
+log "Working tree updated"
 
 # LFS fetch/checkout from outside to avoid directory issues while respecting sparse state
 if have git-lfs; then
   log "Fetching LFS objects without triggering smudge"
-  (
-    cd "$WORK_REPO"
-    GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" GIT_LFS_SKIP_SMUDGE=1 git lfs fetch
-  )
+  GIT_LFS_SKIP_SMUDGE=1 module_git lfs fetch
 
   __lfs_paths=()
-  mapfile -t __lfs_paths < <(
-    cd "$WORK_REPO"
-    GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git lfs ls-files --name-only
-  )
+  mapfile -t __lfs_paths < <(module_git lfs ls-files --name-only)
 
   if [ "${#__lfs_paths[@]}" -gt 0 ]; then
     included_lfs_paths=()
     for __path in "${__lfs_paths[@]}"; do
-      entry="$(
-        cd "$WORK_REPO"
-        GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git ls-files -v -- "$__path"
-      )"
+      entry="$(module_git ls-files -v -- "$__path")"
 
       [ -n "$entry" ] || continue
       prefix="${entry%% *}"
@@ -442,10 +435,7 @@ if have git-lfs; then
 
     if [ "${#included_lfs_paths[@]}" -gt 0 ]; then
       log "Checking out ${#included_lfs_paths[@]} LFS file(s) within sparse checkout"
-      (
-        cd "$WORK_REPO"
-        GIT_DIR="$MODULES_PATH" GIT_WORK_TREE="$SUBMODULE_PATH" git lfs checkout -- "${included_lfs_paths[@]}"
-      )
+      module_git lfs checkout -- "${included_lfs_paths[@]}"
     else
       log "No LFS paths intersect sparse checkout; skipping checkout step"
     fi
