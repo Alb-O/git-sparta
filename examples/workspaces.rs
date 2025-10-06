@@ -3,59 +3,59 @@ use git_sparta::tui::{self, FileRow, SearchData, TagRow};
 fn main() -> anyhow::Result<()> {
     let tags = vec![
         TagRow {
-            name: "backend".into(),
+            label: "backend".into(),
             count: 7,
         },
         TagRow {
-            name: "frontend".into(),
+            label: "frontend".into(),
             count: 5,
         },
         TagRow {
-            name: "integration".into(),
+            label: "integration".into(),
             count: 3,
         },
         TagRow {
-            name: "mobile".into(),
+            label: "mobile".into(),
             count: 4,
         },
         TagRow {
-            name: "qa".into(),
+            label: "qa".into(),
             count: 2,
         },
         TagRow {
-            name: "devops".into(),
+            label: "devops".into(),
             count: 6,
         },
         TagRow {
-            name: "docs".into(),
+            label: "docs".into(),
             count: 3,
         },
         TagRow {
-            name: "security".into(),
+            label: "security".into(),
             count: 2,
         },
         TagRow {
-            name: "infra".into(),
+            label: "infra".into(),
             count: 4,
         },
         TagRow {
-            name: "legacy".into(),
+            label: "legacy".into(),
             count: 1,
         },
         TagRow {
-            name: "api".into(),
+            label: "api".into(),
             count: 5,
         },
         TagRow {
-            name: "db".into(),
+            label: "db".into(),
             count: 3,
         },
         TagRow {
-            name: "tests".into(),
+            label: "tests".into(),
             count: 4,
         },
         TagRow {
-            name: "scripts".into(),
+            label: "scripts".into(),
             count: 2,
         },
     ];
@@ -121,8 +121,8 @@ fn main() -> anyhow::Result<()> {
 
     let data = SearchData {
         repo_display: "workspace-prototype".into(),
-        user_filter: "workspace".into(),
-        tags,
+        context_value: "workspace".into(),
+        primary_rows: tags,
         files,
     };
 

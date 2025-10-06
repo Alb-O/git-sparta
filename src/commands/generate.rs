@@ -85,7 +85,7 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
     let patterns: Vec<String> = unique_patterns.into_iter().collect();
     let tags = tag_counts
         .into_iter()
-        .map(|(name, count)| tui::TagRow { name, count })
+        .map(|(name, count)| tui::TagRow { label: name, count })
         .collect();
     let files = file_map
         .into_iter()
@@ -94,8 +94,8 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
 
     let outcome = tui::run(tui::SearchData {
         repo_display: root.display().to_string(),
-        user_filter: tag.to_string(),
-        tags,
+        context_value: tag.to_string(),
+        primary_rows: tags,
         files,
     })?;
 

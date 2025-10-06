@@ -4,39 +4,42 @@ use ratatui::widgets::Cell;
 use std::mem;
 
 #[derive(Debug, Clone)]
-pub struct TagRow {
-    pub name: String,
+pub struct ListRow {
+    pub label: String,
     pub count: usize,
 }
+
+/// Backwards-compatible alias for callers using the old, tag-focused name.
+pub type TagRow = ListRow;
 
 #[derive(Debug, Clone)]
 pub struct FileRow {
     pub path: String,
-    pub tags: Vec<String>,
-    pub display_tags: String,
+    pub labels: Vec<String>,
+    pub display_labels: String,
     search_text: String,
 }
 
 impl FileRow {
     #[must_use]
-    pub fn new(path: String, tags: Vec<String>) -> Self {
-        let mut tags_sorted = tags;
-        tags_sorted.sort();
-        let display_tags = tags_sorted.join(", ");
-        let search_text = if display_tags.is_empty() {
+    pub fn new(path: String, labels: Vec<String>) -> Self {
+        let mut labels_sorted = labels;
+        labels_sorted.sort();
+        let display_labels = labels_sorted.join(", ");
+        let search_text = if display_labels.is_empty() {
             path.clone()
         } else {
-            format!("{path} {display_tags}")
+            format!("{path} {display_labels}")
         };
         Self {
             path,
-            tags: tags_sorted,
-            display_tags,
+            labels: labels_sorted,
+            display_labels,
             search_text,
         }
     }
 
-    /// Return the search_text (path plus display tags) used by the UI matcher.
+    /// Return the search_text (path plus display labels) used by the UI matcher.
     pub(crate) fn search_text(&self) -> &str {
         &self.search_text
     }
@@ -44,30 +47,72 @@ impl FileRow {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchMode {
-    Tags,
-    Files,
+    Primary,
+    Secondary,
 }
 
-impl SearchMode {
-    pub fn title(self) -> &'static str {
-        match self {
-            SearchMode::Tags => "Tag search",
-            SearchMode::Files => "File search",
+#[derive(Debug, Clone)]
+pub struct ModeTexts {
+    pub title: String,
+    pub hint: String,
+    pub table_title: String,
+    pub count_label: String,
+    pub detail_label: Option<String>,
+}
+
+impl ModeTexts {
+    #[must_use]
+    pub fn for_primary() -> Self {
+        Self {
+            title: "Tag search".to_string(),
+            hint: "Type to filter tags. Press Tab to view files.".to_string(),
+            table_title: "Matching tags".to_string(),
+            count_label: "Tags".to_string(),
+            detail_label: None,
         }
     }
 
-    pub fn hint(self) -> &'static str {
-        match self {
-            SearchMode::Tags => "Type to filter tags. Press Tab to view files.",
-            SearchMode::Files => "Type to filter files by path or tag. Press Tab to view tags.",
+    #[must_use]
+    pub fn for_secondary() -> Self {
+        Self {
+            title: "File search".to_string(),
+            hint: "Type to filter files by path or tag. Press Tab to view tags.".to_string(),
+            table_title: "Matching files".to_string(),
+            count_label: "Files".to_string(),
+            detail_label: Some("Tags".to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UiConfig {
+    pub brand: String,
+    pub context_label: String,
+    pub detail_title: String,
+    pub detail_empty_message: String,
+    pub no_results_message: String,
+    pub primary_mode: ModeTexts,
+    pub secondary_mode: ModeTexts,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            brand: "git-sparta".to_string(),
+            context_label: "Filter tag".to_string(),
+            detail_title: "Selection details".to_string(),
+            detail_empty_message: "No selection".to_string(),
+            no_results_message: "No results".to_string(),
+            primary_mode: ModeTexts::for_primary(),
+            secondary_mode: ModeTexts::for_secondary(),
         }
     }
 }
 
 pub struct SearchData {
     pub repo_display: String,
-    pub user_filter: String,
-    pub tags: Vec<TagRow>,
+    pub context_value: String,
+    pub primary_rows: Vec<ListRow>,
     pub files: Vec<FileRow>,
 }
 

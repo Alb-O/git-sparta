@@ -13,13 +13,13 @@ use ratatui::{
     },
 };
 
-use crate::types::{SearchData, SearchMode, SearchOutcome};
-use crate::utils::{build_file_rows, build_tag_rows};
+use crate::types::{ModeTexts, SearchData, SearchMode, SearchOutcome, UiConfig};
+use crate::utils::{build_file_rows, build_list_rows};
 use frizbee::{Config, match_list};
 
 const PREFILTER_ENABLE_THRESHOLD: usize = 1_000;
 pub fn run(data: SearchData) -> Result<SearchOutcome> {
-    let mut app = App::new(data);
+    let mut app = App::new(data, UiConfig::default());
     app.run()
 }
 
@@ -28,21 +28,22 @@ pub struct App {
     pub mode: SearchMode,
     pub input: String,
     pub table_state: TableState,
-    pub filtered_tags: Vec<usize>,
+    pub filtered_primary: Vec<usize>,
     pub filtered_files: Vec<usize>,
-    pub tag_scores: Vec<u16>,
+    pub primary_scores: Vec<u16>,
     pub file_scores: Vec<u16>,
     pub matcher_config: Config,
     // Customization points for the fzf-like API
     pub(crate) input_title: Option<String>,
-    pub(crate) tag_headers: Option<Vec<String>>,
-    pub(crate) file_headers: Option<Vec<String>>,
-    pub(crate) tag_widths: Option<Vec<Constraint>>,
-    pub(crate) file_widths: Option<Vec<Constraint>>,
+    pub(crate) primary_headers: Option<Vec<String>>,
+    pub(crate) secondary_headers: Option<Vec<String>>,
+    pub(crate) primary_widths: Option<Vec<Constraint>>,
+    pub(crate) secondary_widths: Option<Vec<Constraint>>,
+    pub(crate) ui_config: UiConfig,
 }
 
 impl App {
-    pub fn new(data: SearchData) -> Self {
+    pub fn new(data: SearchData, ui_config: UiConfig) -> Self {
         let mut table_state = TableState::default();
         table_state.select(Some(0));
         let matcher_config = Config {
@@ -51,19 +52,20 @@ impl App {
         };
         let mut app = Self {
             data,
-            mode: SearchMode::Tags,
+            mode: SearchMode::Primary,
             input: String::new(),
             table_state,
-            filtered_tags: Vec::new(),
+            filtered_primary: Vec::new(),
             filtered_files: Vec::new(),
-            tag_scores: Vec::new(),
+            primary_scores: Vec::new(),
             file_scores: Vec::new(),
             matcher_config,
             input_title: None,
-            tag_headers: None,
-            file_headers: None,
-            tag_widths: None,
-            file_widths: None,
+            primary_headers: None,
+            secondary_headers: None,
+            primary_widths: None,
+            secondary_widths: None,
+            ui_config,
         };
         app.refresh();
         app
@@ -116,21 +118,29 @@ impl App {
         let header = Paragraph::new(Text::from(vec![
             Line::from(vec![
                 Span::styled(
-                    "git-sparta",
+                    &self.ui_config.brand,
                     Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
                 ),
                 Span::raw("  •  "),
                 Span::styled(&self.data.repo_display, Style::new().fg(Color::Gray)),
             ]),
             Line::from(vec![
-                Span::raw("Filter tag: "),
-                Span::styled(&self.data.user_filter, Style::new().fg(Color::Yellow)),
-                Span::raw("  •  Tags: "),
+                Span::raw(format!("{}: ", self.ui_config.context_label)),
+                Span::styled(&self.data.context_value, Style::new().fg(Color::Yellow)),
+                Span::raw("  •  "),
+                Span::raw(format!(
+                    "{}: ",
+                    self.ui_config.primary_mode.count_label.as_str()
+                )),
                 Span::styled(
-                    self.data.tags.len().to_string(),
+                    self.data.primary_rows.len().to_string(),
                     Style::new().fg(Color::Green),
                 ),
-                Span::raw("  •  Files: "),
+                Span::raw("  •  "),
+                Span::raw(format!(
+                    "{}: ",
+                    self.ui_config.secondary_mode.count_label.as_str()
+                )),
                 Span::styled(
                     self.data.files.len().to_string(),
                     Style::new().fg(Color::Green),
@@ -141,7 +151,7 @@ impl App {
 
         frame.render_widget(header, outer_layout[0]);
 
-        let hint = Paragraph::new(self.mode.hint())
+        let hint = Paragraph::new(self.mode_texts().hint.as_str())
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
@@ -179,12 +189,12 @@ impl App {
         frame.render_widget(footer, outer_layout[3]);
 
         if self.filtered_len() == 0 {
-            let empty = Paragraph::new("No results")
+            let empty = Paragraph::new(self.ui_config.no_results_message.as_str())
                 .alignment(Alignment::Center)
                 .block(
                     Block::default()
                         .border_type(BorderType::Rounded)
-                        .title(self.mode.title())
+                        .title(self.mode_texts().title.as_str())
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::DarkGray)),
                 );
@@ -198,7 +208,7 @@ impl App {
             .input_title
             .as_ref()
             .map(|s| s.to_string())
-            .unwrap_or_else(|| self.mode.title().to_string());
+            .unwrap_or_else(|| self.mode_texts().title.clone());
         let input = Paragraph::new(self.input.as_str())
             .block(
                 Block::default()
@@ -213,12 +223,12 @@ impl App {
 
     fn render_results(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
         match self.mode {
-            SearchMode::Tags => self.render_tag_table(frame, area),
-            SearchMode::Files => self.render_file_view(frame, area),
+            SearchMode::Primary => self.render_primary_table(frame, area),
+            SearchMode::Secondary => self.render_file_view(frame, area),
         }
     }
 
-    fn render_tag_table(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
+    fn render_primary_table(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
         let query = self.input.trim();
         let highlight_owned = if query.is_empty() {
             None
@@ -226,14 +236,14 @@ impl App {
             Some((query.to_string(), self.config_for_query(query)))
         };
         let highlight_state = highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
-        let rows = build_tag_rows(
-            &self.filtered_tags,
-            &self.tag_scores,
-            &self.data.tags,
+        let rows = build_list_rows(
+            &self.filtered_primary,
+            &self.primary_scores,
+            &self.data.primary_rows,
             highlight_state,
         );
 
-        let widths = self.tag_widths.clone().unwrap_or_else(|| {
+        let widths = self.primary_widths.clone().unwrap_or_else(|| {
             vec![
                 Constraint::Percentage(50),
                 Constraint::Length(8),
@@ -241,9 +251,15 @@ impl App {
             ]
         });
         let header_cells = self
-            .tag_headers
+            .primary_headers
             .clone()
-            .unwrap_or_else(|| vec!["Tag".into(), "Count".into(), "Score".into()])
+            .unwrap_or_else(|| {
+                vec![
+                    self.ui_config.primary_mode.count_label.clone(),
+                    "Count".into(),
+                    "Score".into(),
+                ]
+            })
             .into_iter()
             .map(Cell::from)
             .collect::<Vec<_>>();
@@ -256,7 +272,7 @@ impl App {
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
-                    .title("Matching tags")
+                    .title(self.ui_config.primary_mode.table_title.as_str())
                     .borders(Borders::ALL)
                     .border_style(Style::new().fg(Color::Green)),
             )
@@ -287,7 +303,7 @@ impl App {
             highlight_state,
         );
 
-        let widths = self.file_widths.clone().unwrap_or_else(|| {
+        let widths = self.secondary_widths.clone().unwrap_or_else(|| {
             vec![
                 Constraint::Percentage(55),
                 Constraint::Percentage(35),
@@ -295,9 +311,19 @@ impl App {
             ]
         });
         let header_cells = self
-            .file_headers
+            .secondary_headers
             .clone()
-            .unwrap_or_else(|| vec!["Path".into(), "Tags".into(), "Score".into()])
+            .unwrap_or_else(|| {
+                vec![
+                    "Path".into(),
+                    self.ui_config
+                        .secondary_mode
+                        .detail_label
+                        .clone()
+                        .unwrap_or_else(|| "Labels".into()),
+                    "Score".into(),
+                ]
+            })
             .into_iter()
             .map(Cell::from)
             .collect::<Vec<_>>();
@@ -310,7 +336,7 @@ impl App {
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
-                    .title("Matching files")
+                    .title(self.ui_config.secondary_mode.table_title.as_str())
                     .borders(Borders::ALL)
                     .border_style(Style::new().fg(Color::Magenta)),
             )
@@ -330,15 +356,17 @@ impl App {
             )])];
             lines.push(Line::from(vec![Span::raw(entry.path.clone())]));
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![Span::styled(
-                "Tags",
-                Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            )]));
-            if entry.tags.is_empty() {
+            if let Some(detail_label) = self.ui_config.secondary_mode.detail_label.as_ref() {
+                lines.push(Line::from(vec![Span::styled(
+                    detail_label,
+                    Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                )]));
+            }
+            if entry.labels.is_empty() {
                 lines.push(Line::from("<none>"));
             } else {
-                for tag in &entry.tags {
-                    lines.push(Line::from(Span::raw(tag.clone())));
+                for label in &entry.labels {
+                    lines.push(Line::from(Span::raw(label.clone())));
                 }
             }
 
@@ -347,18 +375,18 @@ impl App {
                 .block(
                     Block::default()
                         .border_type(BorderType::Rounded)
-                        .title("Selection details")
+                        .title(self.ui_config.detail_title.as_str())
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::Gray)),
                 );
             frame.render_widget(detail, detail_area);
         } else {
-            let detail = Paragraph::new("No selection")
+            let detail = Paragraph::new(self.ui_config.detail_empty_message.as_str())
                 .alignment(Alignment::Center)
                 .block(
                     Block::default()
                         .border_type(BorderType::Rounded)
-                        .title("Selection details")
+                        .title(self.ui_config.detail_title.as_str())
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::Gray)),
                 );
@@ -419,8 +447,8 @@ impl App {
 
     fn switch_mode(&mut self) {
         self.mode = match self.mode {
-            SearchMode::Tags => SearchMode::Files,
-            SearchMode::Files => SearchMode::Tags,
+            SearchMode::Primary => SearchMode::Secondary,
+            SearchMode::Secondary => SearchMode::Primary,
         };
         self.table_state.select(Some(0));
         self.refresh();
@@ -445,15 +473,15 @@ impl App {
 
     fn filtered_len(&self) -> usize {
         match self.mode {
-            SearchMode::Tags => self.filtered_tags.len(),
-            SearchMode::Files => self.filtered_files.len(),
+            SearchMode::Primary => self.filtered_primary.len(),
+            SearchMode::Secondary => self.filtered_files.len(),
         }
     }
 
     fn refresh(&mut self) {
         match self.mode {
-            SearchMode::Tags => self.refresh_tags(),
-            SearchMode::Files => self.refresh_files(),
+            SearchMode::Primary => self.refresh_primary(),
+            SearchMode::Secondary => self.refresh_files(),
         }
         if self.filtered_len() == 0 {
             self.table_state.select(None);
@@ -467,27 +495,35 @@ impl App {
         }
     }
 
-    pub(crate) fn refresh_tags(&mut self) {
+    pub(crate) fn refresh_primary(&mut self) {
         let query = self.input.trim();
         if query.is_empty() {
-            self.filtered_tags = (0..self.data.tags.len()).collect();
-            self.tag_scores = vec![0; self.data.tags.len()];
-            self.filtered_tags
-                .sort_by(|&a, &b| self.data.tags[a].name.cmp(&self.data.tags[b].name));
+            self.filtered_primary = (0..self.data.primary_rows.len()).collect();
+            self.primary_scores = vec![0; self.data.primary_rows.len()];
+            self.filtered_primary.sort_by(|&a, &b| {
+                self.data.primary_rows[a]
+                    .label
+                    .cmp(&self.data.primary_rows[b].label)
+            });
             return;
         }
 
         let config = self.config_for_query(query);
-        let haystacks: Vec<&str> = self.data.tags.iter().map(|tag| tag.name.as_str()).collect();
+        let haystacks: Vec<&str> = self
+            .data
+            .primary_rows
+            .iter()
+            .map(|row| row.label.as_str())
+            .collect();
         let ranked = match_list(query, &haystacks, &config);
-        self.filtered_tags = Vec::new();
-        self.tag_scores = Vec::new();
+        self.filtered_primary = Vec::new();
+        self.primary_scores = Vec::new();
         for entry in ranked {
             if entry.score == 0 {
                 continue;
             }
-            self.filtered_tags.push(entry.index as usize);
-            self.tag_scores.push(entry.score);
+            self.filtered_primary.push(entry.index as usize);
+            self.primary_scores.push(entry.score);
         }
     }
 
@@ -537,8 +573,8 @@ impl App {
         }
 
         let dataset_len = match self.mode {
-            SearchMode::Files => self.data.files.len(),
-            SearchMode::Tags => self.data.tags.len(),
+            SearchMode::Secondary => self.data.files.len(),
+            SearchMode::Primary => self.data.primary_rows.len(),
         };
 
         if dataset_len >= PREFILTER_ENABLE_THRESHOLD {
@@ -550,5 +586,12 @@ impl App {
         }
 
         config
+    }
+
+    fn mode_texts(&self) -> &ModeTexts {
+        match self.mode {
+            SearchMode::Primary => &self.ui_config.primary_mode,
+            SearchMode::Secondary => &self.ui_config.secondary_mode,
+        }
     }
 }

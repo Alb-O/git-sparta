@@ -3,63 +3,63 @@ use git_sparta::tui::{self, FileRow, SearchData, TagRow};
 fn main() -> anyhow::Result<()> {
     let tags = vec![
         TagRow {
-            name: "app/core".into(),
+            label: "app/core".into(),
             count: 12,
         },
         TagRow {
-            name: "app/ui".into(),
+            label: "app/ui".into(),
             count: 9,
         },
         TagRow {
-            name: "docs".into(),
+            label: "docs".into(),
             count: 4,
         },
         TagRow {
-            name: "ops".into(),
+            label: "ops".into(),
             count: 6,
         },
         TagRow {
-            name: "tooling".into(),
+            label: "tooling".into(),
             count: 8,
         },
         TagRow {
-            name: "infra".into(),
+            label: "infra".into(),
             count: 5,
         },
         TagRow {
-            name: "ci".into(),
+            label: "ci".into(),
             count: 3,
         },
         TagRow {
-            name: "tests".into(),
+            label: "tests".into(),
             count: 7,
         },
         TagRow {
-            name: "examples".into(),
+            label: "examples".into(),
             count: 2,
         },
         TagRow {
-            name: "legacy".into(),
+            label: "legacy".into(),
             count: 1,
         },
         TagRow {
-            name: "frontend".into(),
+            label: "frontend".into(),
             count: 10,
         },
         TagRow {
-            name: "backend".into(),
+            label: "backend".into(),
             count: 11,
         },
         TagRow {
-            name: "api".into(),
+            label: "api".into(),
             count: 6,
         },
         TagRow {
-            name: "db".into(),
+            label: "db".into(),
             count: 4,
         },
         TagRow {
-            name: "scripts".into(),
+            label: "scripts".into(),
             count: 3,
         },
     ];
@@ -125,8 +125,8 @@ fn main() -> anyhow::Result<()> {
 
     let data = SearchData {
         repo_display: "demo-repo".into(),
-        user_filter: "demo".into(),
-        tags,
+        context_value: "demo".into(),
+        primary_rows: tags,
         files,
     };
 
