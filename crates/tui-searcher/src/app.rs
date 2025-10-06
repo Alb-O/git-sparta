@@ -5,12 +5,8 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, Ke
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
-    style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
-    widgets::{
-        Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Table, TableState, Wrap,
-    },
+    style::{Color, Style},
+    widgets::{Cell, Clear, Paragraph, Row, Table, TableState},
 };
 
 use crate::types::{SearchData, SearchMode, SearchOutcome, UiConfig};
@@ -101,121 +97,42 @@ impl App {
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
         let area = area.inner(Margin {
-            vertical: 1,
-            horizontal: 2,
+            vertical: 0,
+            horizontal: 1,
         });
 
-        let outer_layout = Layout::default()
+        // Input (top line) and results below
+        let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Length(3),
-                Constraint::Min(5),
-                Constraint::Length(2),
-            ])
+            .constraints([Constraint::Length(1), Constraint::Min(2)])
             .split(area);
 
-        let header = Paragraph::new(Text::from(vec![
-            Line::from(vec![
-                Span::styled(
-                    "git-sparta",
-                    Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                ),
-                Span::raw("  •  "),
-                Span::styled(&self.data.repo_display, Style::new().fg(Color::Gray)),
-            ]),
-            Line::from(vec![
-                Span::raw(format!("{}: ", self.ui.filter_label)),
-                Span::styled(&self.data.user_filter, Style::new().fg(Color::Yellow)),
-                Span::raw(format!(
-                    "  •  {}: ",
-                    SearchMode::Facets.count_label(&self.ui)
-                )),
-                Span::styled(
-                    self.data.facets.len().to_string(),
-                    Style::new().fg(Color::Green),
-                ),
-                Span::raw(format!(
-                    "  •  {}: ",
-                    SearchMode::Files.count_label(&self.ui)
-                )),
-                Span::styled(
-                    self.data.files.len().to_string(),
-                    Style::new().fg(Color::Green),
-                ),
-            ]),
-        ]))
-        .alignment(Alignment::Left);
+        self.render_input(frame, layout[0]);
+        self.render_results(frame, layout[1]);
 
-        frame.render_widget(header, outer_layout[0]);
-
-        let hint = Paragraph::new(self.mode.hint(&self.ui))
-            .block(
-                Block::default()
-                    .border_type(BorderType::Rounded)
-                    .borders(Borders::BOTTOM),
-            )
-            .style(Style::default().fg(Color::Gray));
-        frame.render_widget(hint, outer_layout[1]);
-
-        let body_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(3)])
-            .split(outer_layout[2]);
-
-        self.render_input(frame, body_layout[0]);
-        self.render_results(frame, body_layout[1]);
-
-        let footer = Paragraph::new(Text::from(vec![Line::from(vec![
-            Span::styled(
-                "Enter",
-                Style::new().fg(Color::Green).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" accept  •  "),
-            Span::styled(
-                "Esc",
-                Style::new().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" cancel  •  "),
-            Span::styled(
-                "Tab",
-                Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" switch mode"),
-        ])]))
-        .style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(footer, outer_layout[3]);
-
+        // Minimal empty state
         if self.filtered_len() == 0 {
             let empty = Paragraph::new("No results")
                 .alignment(Alignment::Center)
-                .block(
-                    Block::default()
-                        .border_type(BorderType::Rounded)
-                        .title(self.mode.title(&self.ui))
-                        .borders(Borders::ALL)
-                        .border_style(Style::new().fg(Color::DarkGray)),
-                );
-            frame.render_widget(Clear, body_layout[1]);
-            frame.render_widget(empty, body_layout[1]);
+                .style(Style::default().fg(Color::DarkGray));
+            frame.render_widget(Clear, layout[1]);
+            frame.render_widget(empty, layout[1]);
         }
     }
 
     fn render_input(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let title = self
+        // Prefer an explicit input_title; fall back to repository display name so demos show a prompt.
+        let prompt = self
             .input_title
-            .as_ref()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| self.mode.title(&self.ui).to_string());
-        let input = Paragraph::new(self.input.as_str())
-            .block(
-                Block::default()
-                    .border_type(BorderType::Rounded)
-                    .borders(Borders::ALL)
-                    .title(title)
-                    .border_style(Style::new().fg(Color::Cyan)),
-            )
-            .style(Style::default().fg(Color::White));
+            .as_deref()
+            .or(Some(self.data.repo_display.as_str()))
+            .unwrap_or("");
+        let input_text = if prompt.is_empty() {
+            self.input.clone()
+        } else {
+            format!("{} > {}", prompt, self.input)
+        };
+        let input = Paragraph::new(input_text).style(Style::default().fg(Color::LightCyan));
         frame.render_widget(input, area);
     }
 
@@ -261,26 +178,13 @@ impl App {
 
         let table = Table::new(rows, widths)
             .header(header)
-            .block(
-                Block::default()
-                    .border_type(BorderType::Rounded)
-                    .title(self.mode.table_title(&self.ui))
-                    .borders(Borders::ALL)
-                    .border_style(Style::new().fg(Color::Green)),
-            )
             .row_highlight_style(Style::new().bg(Color::DarkGray).fg(Color::Yellow))
             .highlight_symbol("▶ ");
         frame.render_stateful_widget(table, area, &mut self.table_state);
     }
 
     fn render_file_view(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let areas = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
-            .split(area);
-        let table_area = areas[0];
-        let detail_area = areas[1];
-
+        // Minimal: just the table, no detail panel or scrollbar
         let query = self.input.trim();
         let highlight_owned = if query.is_empty() {
             None
@@ -297,8 +201,8 @@ impl App {
 
         let widths = self.file_widths.clone().unwrap_or_else(|| {
             vec![
-                Constraint::Percentage(55),
-                Constraint::Percentage(35),
+                Constraint::Percentage(60),
+                Constraint::Percentage(30),
                 Constraint::Length(8),
             ]
         });
@@ -310,76 +214,14 @@ impl App {
             .map(Cell::from)
             .collect::<Vec<_>>();
         let header = Row::new(header_cells)
-            .style(Style::new().fg(Color::Magenta))
+            .style(Style::new().fg(Color::Green))
             .height(1);
 
         let table = Table::new(rows, widths)
             .header(header)
-            .block(
-                Block::default()
-                    .border_type(BorderType::Rounded)
-                    .title(SearchMode::Files.table_title(&self.ui))
-                    .borders(Borders::ALL)
-                    .border_style(Style::new().fg(Color::Magenta)),
-            )
             .row_highlight_style(Style::new().bg(Color::DarkGray).fg(Color::Yellow))
             .highlight_symbol("▶ ");
-        frame.render_stateful_widget(table, table_area, &mut self.table_state);
-
-        if let Some(selected) = self
-            .table_state
-            .selected()
-            .and_then(|idx| self.filtered_files.get(idx))
-        {
-            let entry = &self.data.files[*selected];
-            let mut lines = vec![Line::from(vec![Span::styled(
-                "Path",
-                Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            )])];
-            lines.push(Line::from(vec![Span::raw(entry.path.clone())]));
-            lines.push(Line::from(""));
-            lines.push(Line::from(vec![Span::styled(
-                "Tags",
-                Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            )]));
-            if entry.tags.is_empty() {
-                lines.push(Line::from("<none>"));
-            } else {
-                for tag in &entry.tags {
-                    lines.push(Line::from(Span::raw(tag.clone())));
-                }
-            }
-
-            let detail = Paragraph::new(Text::from(lines))
-                .wrap(Wrap { trim: true })
-                .block(
-                    Block::default()
-                        .border_type(BorderType::Rounded)
-                        .title(self.ui.detail_panel_title.as_str())
-                        .borders(Borders::ALL)
-                        .border_style(Style::new().fg(Color::Gray)),
-                );
-            frame.render_widget(detail, detail_area);
-        } else {
-            let detail = Paragraph::new("No selection")
-                .alignment(Alignment::Center)
-                .block(
-                    Block::default()
-                        .border_type(BorderType::Rounded)
-                        .title(self.ui.detail_panel_title.as_str())
-                        .borders(Borders::ALL)
-                        .border_style(Style::new().fg(Color::Gray)),
-                );
-            frame.render_widget(detail, detail_area);
-        }
-
-        let mut scrollbar_state = ScrollbarState::default()
-            .content_length(self.filtered_files.len())
-            .position(self.table_state.selected().unwrap_or(0));
-        let scrollbar = Scrollbar::default()
-            .orientation(ScrollbarOrientation::VerticalRight)
-            .thumb_style(Style::new().bg(Color::Yellow));
-        frame.render_stateful_widget(scrollbar, table_area, &mut scrollbar_state);
+        frame.render_stateful_widget(table, area, &mut self.table_state);
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<SearchOutcome>> {
