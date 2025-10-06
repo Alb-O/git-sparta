@@ -8,8 +8,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
-        TableState, Wrap,
+        Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Table, TableState, Wrap,
     },
 };
 
@@ -132,7 +132,11 @@ impl App {
         frame.render_widget(header, outer_layout[0]);
 
         let hint = Paragraph::new(self.mode.hint())
-            .block(Block::default().borders(Borders::BOTTOM))
+            .block(
+                Block::default()
+                    .border_type(BorderType::Rounded)
+                    .borders(Borders::BOTTOM),
+            )
             .style(Style::default().fg(Color::Gray));
         frame.render_widget(hint, outer_layout[1]);
 
@@ -169,6 +173,7 @@ impl App {
                 .alignment(Alignment::Center)
                 .block(
                     Block::default()
+                        .border_type(BorderType::Rounded)
                         .title(self.mode.title())
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::DarkGray)),
@@ -183,6 +188,7 @@ impl App {
         let input = Paragraph::new(self.input.as_str())
             .block(
                 Block::default()
+                    .border_type(BorderType::Rounded)
                     .borders(Borders::ALL)
                     .title(title)
                     .border_style(Style::new().fg(Color::Cyan)),
@@ -218,9 +224,19 @@ impl App {
             Constraint::Length(8),
             Constraint::Length(8),
         ];
+        let header = Row::new(vec![
+            Cell::from("Tag"),
+            Cell::from("Count"),
+            Cell::from("Score"),
+        ])
+        .style(Style::new().fg(Color::Green))
+        .height(1);
+
         let table = Table::new(rows, widths)
+            .header(header)
             .block(
                 Block::default()
+                    .border_type(BorderType::Rounded)
                     .title("Matching tags")
                     .borders(Borders::ALL)
                     .border_style(Style::new().fg(Color::Green)),
@@ -257,9 +273,19 @@ impl App {
             Constraint::Percentage(35),
             Constraint::Length(8),
         ];
+        let header = Row::new(vec![
+            Cell::from("Path"),
+            Cell::from("Tags"),
+            Cell::from("Score"),
+        ])
+        .style(Style::new().fg(Color::Magenta))
+        .height(1);
+
         let table = Table::new(rows, widths)
+            .header(header)
             .block(
                 Block::default()
+                    .border_type(BorderType::Rounded)
                     .title("Matching files")
                     .borders(Borders::ALL)
                     .border_style(Style::new().fg(Color::Magenta)),
@@ -296,6 +322,7 @@ impl App {
                 .wrap(Wrap { trim: true })
                 .block(
                     Block::default()
+                        .border_type(BorderType::Rounded)
                         .title("Selection details")
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::Gray)),
@@ -306,6 +333,7 @@ impl App {
                 .alignment(Alignment::Center)
                 .block(
                     Block::default()
+                        .border_type(BorderType::Rounded)
                         .title("Selection details")
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::Gray)),
