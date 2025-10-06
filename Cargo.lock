@@ -479,6 +479,7 @@ dependencies = [
 [[package]]
 name = "frizbee"
 version = "0.5.0"
+source = "git+https://github.com/saghen/frizbee.git?branch=main#8c1153a159ae9aeda1ecf3c3dd9ab814c3ae60a3"
 dependencies = [
  "multiversion",
  "rayon",
