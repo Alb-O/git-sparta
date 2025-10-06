@@ -1,10 +1,5 @@
-mod commands;
-mod config;
-mod git;
-mod output;
-
 use clap::{Parser, Subcommand};
-use commands::{generate, setup, teardown};
+use git_sparta::commands::{generate, setup, teardown};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]

@@ -161,13 +161,15 @@ fn apply_single_override(path: PathBuf, overrides: &mut Overrides) -> Result<()>
     let json: Value = serde_json::from_str(&contents)?;
 
     if overrides.submodule_url.is_none()
-        && let Some(value) = first_value_for_key(&json, "SUBMODULE_URL") {
-            overrides.submodule_url = Some(value);
-        }
+        && let Some(value) = first_value_for_key(&json, "SUBMODULE_URL")
+    {
+        overrides.submodule_url = Some(value);
+    }
     if overrides.shared_mirror_path.is_none()
-        && let Some(value) = first_value_for_key(&json, "SHARED_MIRROR_PATH") {
-            overrides.shared_mirror_path = Some(PathBuf::from(value));
-        }
+        && let Some(value) = first_value_for_key(&json, "SHARED_MIRROR_PATH")
+    {
+        overrides.shared_mirror_path = Some(PathBuf::from(value));
+    }
     Ok(())
 }
 
@@ -218,9 +220,10 @@ fn first_value_for_key(value: &Value, key: &str) -> Option<String> {
         match current {
             Value::Object(map) => {
                 if let Some(found) = map.get(key)
-                    && let Some(s) = found.as_str() {
-                        return Some(s.to_owned());
-                    }
+                    && let Some(s) = found.as_str()
+                {
+                    return Some(s.to_owned());
+                }
                 queue.extend(map.values());
             }
             Value::Array(items) => queue.extend(items.iter()),

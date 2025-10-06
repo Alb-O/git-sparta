@@ -1,8 +1,8 @@
-use crate::{git, output};
+use crate::{git, tui};
 use anyhow::{Context, Result};
 use gix::attrs::StateRef;
 use gix::bstr::ByteSlice;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
@@ -19,7 +19,8 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
 
     let mut matches: Vec<(String, String)> = Vec::new();
     let mut unique_patterns: BTreeSet<String> = BTreeSet::new();
-    let mut unique_tags: BTreeSet<String> = BTreeSet::new();
+    let mut tag_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut file_map: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
 
     for entry in index.entries() {
         let path = entry.path(&index);
@@ -27,39 +28,42 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
             .at_entry(path, Some(entry.mode))
             .with_context(|| format!("failed to evaluate attributes for {}", path))?;
         if platform.matching_attributes(&mut outcome)
-            && let Some(state) = outcome.iter_selected().next().map(|m| m.assignment.state) {
-                match state {
-                    StateRef::Unspecified | StateRef::Unset => {}
-                    StateRef::Set => {
-                        let token = "global".to_string();
+            && let Some(state) = outcome.iter_selected().next().map(|m| m.assignment.state)
+        {
+            match state {
+                StateRef::Unspecified | StateRef::Unset => {}
+                StateRef::Set => {
+                    let token = "global".to_string();
+                    record_match(
+                        &mut matches,
+                        &mut unique_patterns,
+                        path,
+                        &token,
+                        tag,
+                        &mut tag_counts,
+                        &mut file_map,
+                    );
+                }
+                StateRef::Value(value) => {
+                    let raw = value.as_bstr().to_str_lossy();
+                    for token in raw
+                        .split(',')
+                        .map(|token| token.trim())
+                        .filter(|s| !s.is_empty())
+                    {
                         record_match(
                             &mut matches,
                             &mut unique_patterns,
-                            &mut unique_tags,
                             path,
-                            &token,
+                            token,
                             tag,
+                            &mut tag_counts,
+                            &mut file_map,
                         );
-                    }
-                    StateRef::Value(value) => {
-                        let raw = value.as_bstr().to_str_lossy();
-                        for token in raw
-                            .split(',')
-                            .map(|token| token.trim())
-                            .filter(|s| !s.is_empty())
-                        {
-                            record_match(
-                                &mut matches,
-                                &mut unique_patterns,
-                                &mut unique_tags,
-                                path,
-                                token,
-                                tag,
-                            );
-                        }
                     }
                 }
             }
+        }
         outcome.reset();
     }
 
@@ -71,23 +75,35 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
         );
     }
 
-    output::divider();
-    output::heading(&format!("Matched tags for input tag: {tag}"));
-    output::note("(including \"global\" when present)");
-    output::label_value("Tags", unique_tags.len());
-    if unique_tags.is_empty() {
-        output::note("  <none>");
-    } else {
-        output::bullet_list(unique_tags.iter().cloned());
+    if auto_yes {
+        for pattern in &unique_patterns {
+            println!("{}", pattern);
+        }
+        return Ok(());
     }
-    output::label_value("Patterns", unique_patterns.len());
-    output::divider();
 
-    if !output::confirm("Proceed?", false, auto_yes)? {
+    let patterns: Vec<String> = unique_patterns.into_iter().collect();
+    let tags = tag_counts
+        .into_iter()
+        .map(|(name, count)| tui::TagRow { name, count })
+        .collect();
+    let files = file_map
+        .into_iter()
+        .map(|(path, tags)| tui::FileRow::new(path, tags.into_iter().collect()))
+        .collect();
+
+    let outcome = tui::run(tui::SearchData {
+        repo_display: root.display().to_string(),
+        user_filter: tag.to_string(),
+        tags,
+        files,
+    })?;
+
+    if !outcome.accepted {
         anyhow::bail!("aborted by user");
     }
 
-    for pattern in unique_patterns {
+    for pattern in patterns {
         println!("{}", pattern);
     }
 
@@ -97,15 +113,18 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
 fn record_match(
     matches: &mut Vec<(String, String)>,
     patterns: &mut BTreeSet<String>,
-    tags: &mut BTreeSet<String>,
     path: &gix::bstr::BStr,
     token: &str,
     user_tag: &str,
+    tag_counts: &mut BTreeMap<String, usize>,
+    file_map: &mut BTreeMap<String, BTreeSet<String>>,
 ) {
     if token == "global" || token.contains(user_tag) {
         let pattern = path.to_str_lossy().into_owned();
-        matches.push((pattern.clone(), token.to_owned()));
-        patterns.insert(pattern);
-        tags.insert(token.to_owned());
+        let token_owned = token.to_owned();
+        matches.push((pattern.clone(), token_owned.clone()));
+        patterns.insert(pattern.clone());
+        *tag_counts.entry(token_owned.clone()).or_insert(0) += 1;
+        file_map.entry(pattern).or_default().insert(token_owned);
     }
 }
