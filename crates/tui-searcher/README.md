@@ -10,11 +10,12 @@ Features
 Quick example
 
 ```rust
-use tui_searcher::Searcher;
+use tui_searcher::{SearchMode, Searcher, UiConfig};
 
 let outcome = Searcher::new(data)
+    .with_ui_config(UiConfig::tags_and_files())
     .with_input_title("Search repo")
-    .with_tag_headers(vec!["Tag", "Count", "Score"])
+    .with_headers_for(SearchMode::Facets, vec!["Tag", "Count", "Score"])
     .run()?;
 ```
 

@@ -3,7 +3,7 @@ pub mod types;
 pub mod utils;
 
 pub use app::run;
-pub use types::{FileRow, SearchData, SearchMode, TagRow};
+pub use types::{FacetRow, FileRow, PaneUiConfig, SearchData, SearchMode, UiConfig};
 
 use ratatui::layout::Constraint;
 
@@ -13,10 +13,11 @@ use ratatui::layout::Constraint;
 pub struct Searcher {
     data: SearchData,
     input_title: Option<String>,
-    tag_headers: Option<Vec<String>>,
+    facet_headers: Option<Vec<String>>,
     file_headers: Option<Vec<String>>,
-    tag_widths: Option<Vec<Constraint>>,
+    facet_widths: Option<Vec<Constraint>>,
     file_widths: Option<Vec<Constraint>>,
+    ui_config: Option<UiConfig>,
 }
 
 impl Searcher {
@@ -25,10 +26,11 @@ impl Searcher {
         Self {
             data,
             input_title: None,
-            tag_headers: None,
+            facet_headers: None,
             file_headers: None,
-            tag_widths: None,
+            facet_widths: None,
             file_widths: None,
+            ui_config: None,
         }
     }
 
@@ -37,23 +39,25 @@ impl Searcher {
         self
     }
 
-    pub fn with_tag_headers(mut self, headers: Vec<&str>) -> Self {
-        self.tag_headers = Some(headers.into_iter().map(|s| s.to_string()).collect());
+    pub fn with_headers_for(mut self, mode: SearchMode, headers: Vec<&str>) -> Self {
+        let headers = headers.into_iter().map(|s| s.to_string()).collect();
+        match mode {
+            SearchMode::Facets => self.facet_headers = Some(headers),
+            SearchMode::Files => self.file_headers = Some(headers),
+        }
         self
     }
 
-    pub fn with_file_headers(mut self, headers: Vec<&str>) -> Self {
-        self.file_headers = Some(headers.into_iter().map(|s| s.to_string()).collect());
+    pub fn with_widths_for(mut self, mode: SearchMode, widths: Vec<Constraint>) -> Self {
+        match mode {
+            SearchMode::Facets => self.facet_widths = Some(widths),
+            SearchMode::Files => self.file_widths = Some(widths),
+        }
         self
     }
 
-    pub fn with_tag_widths(mut self, widths: Vec<Constraint>) -> Self {
-        self.tag_widths = Some(widths);
-        self
-    }
-
-    pub fn with_file_widths(mut self, widths: Vec<Constraint>) -> Self {
-        self.file_widths = Some(widths);
+    pub fn with_ui_config(mut self, config: UiConfig) -> Self {
+        self.ui_config = Some(config);
         self
     }
 
@@ -64,17 +68,20 @@ impl Searcher {
         if let Some(title) = self.input_title {
             app.input_title = Some(title);
         }
-        if let Some(headers) = self.tag_headers {
-            app.tag_headers = Some(headers);
+        if let Some(headers) = self.facet_headers {
+            app.facet_headers = Some(headers);
         }
         if let Some(headers) = self.file_headers {
             app.file_headers = Some(headers);
         }
-        if let Some(widths) = self.tag_widths {
-            app.tag_widths = Some(widths);
+        if let Some(widths) = self.facet_widths {
+            app.facet_widths = Some(widths);
         }
         if let Some(widths) = self.file_widths {
             app.file_widths = Some(widths);
+        }
+        if let Some(ui) = self.ui_config {
+            app.ui = ui;
         }
 
         app.run()
