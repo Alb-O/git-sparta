@@ -327,9 +327,6 @@ impl App {
             KeyCode::Esc => {
                 return Ok(Some(SearchOutcome { accepted: false }));
             }
-            KeyCode::Char('q') if key.modifiers.is_empty() => {
-                return Ok(Some(SearchOutcome { accepted: false }));
-            }
             KeyCode::Enter => {
                 return Ok(Some(SearchOutcome { accepted: true }));
             }
