@@ -18,33 +18,9 @@ use crate::utils::{build_file_rows, build_tag_rows};
 use frizbee::{Config, match_list};
 
 const PREFILTER_ENABLE_THRESHOLD: usize = 1_000;
-
 pub fn run(data: SearchData) -> Result<SearchOutcome> {
-    let mut terminal = ratatui::init();
-    terminal.clear()?;
-
     let mut app = App::new(data);
-
-    let result = loop {
-        terminal.draw(|frame| app.draw(frame))?;
-
-        if event::poll(Duration::from_millis(250))? {
-            match event::read()? {
-                Event::Key(key) if key.kind == KeyEventKind::Press => {
-                    if let Some(outcome) = app.handle_key(key)? {
-                        break outcome;
-                    }
-                }
-                Event::Resize(_, _) => {
-                    // Redraw handled at start of next loop iteration.
-                }
-                _ => {}
-            }
-        }
-    };
-
-    ratatui::restore();
-    Ok(result)
+    app.run()
 }
 
 pub struct App {
@@ -57,6 +33,12 @@ pub struct App {
     pub tag_scores: Vec<u16>,
     pub file_scores: Vec<u16>,
     pub matcher_config: Config,
+    // Customization points for the fzf-like API
+    pub(crate) input_title: Option<String>,
+    pub(crate) tag_headers: Option<Vec<String>>,
+    pub(crate) file_headers: Option<Vec<String>>,
+    pub(crate) tag_widths: Option<Vec<Constraint>>,
+    pub(crate) file_widths: Option<Vec<Constraint>>,
 }
 
 impl App {
@@ -77,9 +59,41 @@ impl App {
             tag_scores: Vec::new(),
             file_scores: Vec::new(),
             matcher_config,
+            input_title: None,
+            tag_headers: None,
+            file_headers: None,
+            tag_widths: None,
+            file_widths: None,
         };
         app.refresh();
         app
+    }
+
+    /// Run the interactive application. This is a method so callers can
+    /// customize `App` fields before launching (used by the `Searcher`
+    /// builder in the crate root).
+    pub fn run(&mut self) -> Result<SearchOutcome> {
+        let mut terminal = ratatui::init();
+        terminal.clear()?;
+
+        let result = loop {
+            terminal.draw(|frame| self.draw(frame))?;
+
+            if event::poll(Duration::from_millis(250))? {
+                match event::read()? {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => {
+                        if let Some(outcome) = self.handle_key(key)? {
+                            break outcome;
+                        }
+                    }
+                    Event::Resize(_, _) => {}
+                    _ => {}
+                }
+            }
+        };
+
+        ratatui::restore();
+        Ok(result)
     }
 
     fn draw(&mut self, frame: &mut Frame) {
@@ -180,7 +194,11 @@ impl App {
     }
 
     fn render_input(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let title = self.mode.title().to_string();
+        let title = self
+            .input_title
+            .as_ref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| self.mode.title().to_string());
         let input = Paragraph::new(self.input.as_str())
             .block(
                 Block::default()
@@ -215,18 +233,23 @@ impl App {
             highlight_state,
         );
 
-        let widths = [
-            Constraint::Percentage(50),
-            Constraint::Length(8),
-            Constraint::Length(8),
-        ];
-        let header = Row::new(vec![
-            Cell::from("Tag"),
-            Cell::from("Count"),
-            Cell::from("Score"),
-        ])
-        .style(Style::new().fg(Color::Green))
-        .height(1);
+        let widths = self.tag_widths.clone().unwrap_or_else(|| {
+            vec![
+                Constraint::Percentage(50),
+                Constraint::Length(8),
+                Constraint::Length(8),
+            ]
+        });
+        let header_cells = self
+            .tag_headers
+            .clone()
+            .unwrap_or_else(|| vec!["Tag".into(), "Count".into(), "Score".into()])
+            .into_iter()
+            .map(Cell::from)
+            .collect::<Vec<_>>();
+        let header = Row::new(header_cells)
+            .style(Style::new().fg(Color::Green))
+            .height(1);
 
         let table = Table::new(rows, widths)
             .header(header)
@@ -264,18 +287,23 @@ impl App {
             highlight_state,
         );
 
-        let widths = [
-            Constraint::Percentage(55),
-            Constraint::Percentage(35),
-            Constraint::Length(8),
-        ];
-        let header = Row::new(vec![
-            Cell::from("Path"),
-            Cell::from("Tags"),
-            Cell::from("Score"),
-        ])
-        .style(Style::new().fg(Color::Magenta))
-        .height(1);
+        let widths = self.file_widths.clone().unwrap_or_else(|| {
+            vec![
+                Constraint::Percentage(55),
+                Constraint::Percentage(35),
+                Constraint::Length(8),
+            ]
+        });
+        let header_cells = self
+            .file_headers
+            .clone()
+            .unwrap_or_else(|| vec!["Path".into(), "Tags".into(), "Score".into()])
+            .into_iter()
+            .map(Cell::from)
+            .collect::<Vec<_>>();
+        let header = Row::new(header_cells)
+            .style(Style::new().fg(Color::Magenta))
+            .height(1);
 
         let table = Table::new(rows, widths)
             .header(header)
