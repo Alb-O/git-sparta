@@ -1,1 +1,2 @@
 * filter= diff= merge= -text
+*.lock linguist-generated=true
