@@ -1,60 +1,60 @@
-use git_sparta::tui::{self, FileRow, SearchData, TagRow};
+use git_sparta::tui::{self, FacetRow, FileRow, SearchData};
 
 fn main() -> anyhow::Result<()> {
-    let tags = vec![
-        TagRow {
+    let facets = vec![
+        FacetRow {
             name: "backend".into(),
             count: 7,
         },
-        TagRow {
+        FacetRow {
             name: "frontend".into(),
             count: 5,
         },
-        TagRow {
+        FacetRow {
             name: "integration".into(),
             count: 3,
         },
-        TagRow {
+        FacetRow {
             name: "mobile".into(),
             count: 4,
         },
-        TagRow {
+        FacetRow {
             name: "qa".into(),
             count: 2,
         },
-        TagRow {
+        FacetRow {
             name: "devops".into(),
             count: 6,
         },
-        TagRow {
+        FacetRow {
             name: "docs".into(),
             count: 3,
         },
-        TagRow {
+        FacetRow {
             name: "security".into(),
             count: 2,
         },
-        TagRow {
+        FacetRow {
             name: "infra".into(),
             count: 4,
         },
-        TagRow {
+        FacetRow {
             name: "legacy".into(),
             count: 1,
         },
-        TagRow {
+        FacetRow {
             name: "api".into(),
             count: 5,
         },
-        TagRow {
+        FacetRow {
             name: "db".into(),
             count: 3,
         },
-        TagRow {
+        FacetRow {
             name: "tests".into(),
             count: 4,
         },
-        TagRow {
+        FacetRow {
             name: "scripts".into(),
             count: 2,
         },
@@ -122,7 +122,7 @@ fn main() -> anyhow::Result<()> {
     let data = SearchData {
         repo_display: "workspace-prototype".into(),
         user_filter: "workspace".into(),
-        tags,
+        facets,
         files,
     };
 

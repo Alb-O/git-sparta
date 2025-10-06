@@ -4,7 +4,7 @@ use ratatui::widgets::Cell;
 use std::mem;
 
 #[derive(Debug, Clone)]
-pub struct TagRow {
+pub struct FacetRow {
     pub name: String,
     pub count: usize,
 }
@@ -42,24 +42,114 @@ impl FileRow {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PaneUiConfig {
+    pub mode_title: String,
+    pub hint: String,
+    pub table_title: String,
+    pub count_label: String,
+}
+
+impl PaneUiConfig {
+    #[must_use]
+    pub fn new(
+        mode_title: impl Into<String>,
+        hint: impl Into<String>,
+        table_title: impl Into<String>,
+        count_label: impl Into<String>,
+    ) -> Self {
+        Self {
+            mode_title: mode_title.into(),
+            hint: hint.into(),
+            table_title: table_title.into(),
+            count_label: count_label.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UiConfig {
+    pub filter_label: String,
+    pub facets: PaneUiConfig,
+    pub files: PaneUiConfig,
+    pub detail_panel_title: String,
+}
+
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            filter_label: "Filter facets".to_string(),
+            facets: PaneUiConfig::new(
+                "Facet search",
+                "Type to filter facets. Press Tab to view files.",
+                "Matching facets",
+                "Facets",
+            ),
+            files: PaneUiConfig::new(
+                "File search",
+                "Type to filter files. Press Tab to view facets.",
+                "Matching files",
+                "Files",
+            ),
+            detail_panel_title: "Selection details".to_string(),
+        }
+    }
+}
+
+impl UiConfig {
+    #[must_use]
+    pub fn tags_and_files() -> Self {
+        Self {
+            filter_label: "Filter tag".to_string(),
+            facets: PaneUiConfig::new(
+                "Tag search",
+                "Type to filter tags. Press Tab to view files.",
+                "Matching tags",
+                "Tags",
+            ),
+            files: PaneUiConfig::new(
+                "File search",
+                "Type to filter files by path or tag. Press Tab to view tags.",
+                "Matching files",
+                "Files",
+            ),
+            detail_panel_title: "Selection details".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchMode {
-    Tags,
+    Facets,
     Files,
 }
 
 impl SearchMode {
-    pub fn title(self) -> &'static str {
+    pub fn title<'a>(self, ui: &'a UiConfig) -> &'a str {
         match self {
-            SearchMode::Tags => "Tag search",
-            SearchMode::Files => "File search",
+            SearchMode::Facets => ui.facets.mode_title.as_str(),
+            SearchMode::Files => ui.files.mode_title.as_str(),
         }
     }
 
-    pub fn hint(self) -> &'static str {
+    pub fn hint<'a>(self, ui: &'a UiConfig) -> &'a str {
         match self {
-            SearchMode::Tags => "Type to filter tags. Press Tab to view files.",
-            SearchMode::Files => "Type to filter files by path or tag. Press Tab to view tags.",
+            SearchMode::Facets => ui.facets.hint.as_str(),
+            SearchMode::Files => ui.files.hint.as_str(),
+        }
+    }
+
+    pub fn table_title<'a>(self, ui: &'a UiConfig) -> &'a str {
+        match self {
+            SearchMode::Facets => ui.facets.table_title.as_str(),
+            SearchMode::Files => ui.files.table_title.as_str(),
+        }
+    }
+
+    pub fn count_label<'a>(self, ui: &'a UiConfig) -> &'a str {
+        match self {
+            SearchMode::Facets => ui.facets.count_label.as_str(),
+            SearchMode::Files => ui.files.count_label.as_str(),
         }
     }
 }
@@ -67,7 +157,7 @@ impl SearchMode {
 pub struct SearchData {
     pub repo_display: String,
     pub user_filter: String,
-    pub tags: Vec<TagRow>,
+    pub facets: Vec<FacetRow>,
     pub files: Vec<FileRow>,
 }
 

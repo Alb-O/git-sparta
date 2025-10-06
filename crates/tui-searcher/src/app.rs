@@ -13,8 +13,8 @@ use ratatui::{
     },
 };
 
-use crate::types::{SearchData, SearchMode, SearchOutcome};
-use crate::utils::{build_file_rows, build_tag_rows};
+use crate::types::{SearchData, SearchMode, SearchOutcome, UiConfig};
+use crate::utils::{build_facet_rows, build_file_rows};
 use frizbee::{Config, match_list};
 
 const PREFILTER_ENABLE_THRESHOLD: usize = 1_000;
@@ -28,17 +28,18 @@ pub struct App {
     pub mode: SearchMode,
     pub input: String,
     pub table_state: TableState,
-    pub filtered_tags: Vec<usize>,
+    pub filtered_facets: Vec<usize>,
     pub filtered_files: Vec<usize>,
-    pub tag_scores: Vec<u16>,
+    pub facet_scores: Vec<u16>,
     pub file_scores: Vec<u16>,
     pub matcher_config: Config,
     // Customization points for the fzf-like API
     pub(crate) input_title: Option<String>,
-    pub(crate) tag_headers: Option<Vec<String>>,
+    pub(crate) facet_headers: Option<Vec<String>>,
     pub(crate) file_headers: Option<Vec<String>>,
-    pub(crate) tag_widths: Option<Vec<Constraint>>,
+    pub(crate) facet_widths: Option<Vec<Constraint>>,
     pub(crate) file_widths: Option<Vec<Constraint>>,
+    pub(crate) ui: UiConfig,
 }
 
 impl App {
@@ -51,19 +52,20 @@ impl App {
         };
         let mut app = Self {
             data,
-            mode: SearchMode::Tags,
+            mode: SearchMode::Facets,
             input: String::new(),
             table_state,
-            filtered_tags: Vec::new(),
+            filtered_facets: Vec::new(),
             filtered_files: Vec::new(),
-            tag_scores: Vec::new(),
+            facet_scores: Vec::new(),
             file_scores: Vec::new(),
             matcher_config,
             input_title: None,
-            tag_headers: None,
+            facet_headers: None,
             file_headers: None,
-            tag_widths: None,
+            facet_widths: None,
             file_widths: None,
+            ui: UiConfig::default(),
         };
         app.refresh();
         app
@@ -123,14 +125,20 @@ impl App {
                 Span::styled(&self.data.repo_display, Style::new().fg(Color::Gray)),
             ]),
             Line::from(vec![
-                Span::raw("Filter tag: "),
+                Span::raw(format!("{}: ", self.ui.filter_label)),
                 Span::styled(&self.data.user_filter, Style::new().fg(Color::Yellow)),
-                Span::raw("  •  Tags: "),
+                Span::raw(format!(
+                    "  •  {}: ",
+                    SearchMode::Facets.count_label(&self.ui)
+                )),
                 Span::styled(
-                    self.data.tags.len().to_string(),
+                    self.data.facets.len().to_string(),
                     Style::new().fg(Color::Green),
                 ),
-                Span::raw("  •  Files: "),
+                Span::raw(format!(
+                    "  •  {}: ",
+                    SearchMode::Files.count_label(&self.ui)
+                )),
                 Span::styled(
                     self.data.files.len().to_string(),
                     Style::new().fg(Color::Green),
@@ -141,7 +149,7 @@ impl App {
 
         frame.render_widget(header, outer_layout[0]);
 
-        let hint = Paragraph::new(self.mode.hint())
+        let hint = Paragraph::new(self.mode.hint(&self.ui))
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
@@ -184,7 +192,7 @@ impl App {
                 .block(
                     Block::default()
                         .border_type(BorderType::Rounded)
-                        .title(self.mode.title())
+                        .title(self.mode.title(&self.ui))
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::DarkGray)),
                 );
@@ -198,7 +206,7 @@ impl App {
             .input_title
             .as_ref()
             .map(|s| s.to_string())
-            .unwrap_or_else(|| self.mode.title().to_string());
+            .unwrap_or_else(|| self.mode.title(&self.ui).to_string());
         let input = Paragraph::new(self.input.as_str())
             .block(
                 Block::default()
@@ -213,12 +221,12 @@ impl App {
 
     fn render_results(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
         match self.mode {
-            SearchMode::Tags => self.render_tag_table(frame, area),
+            SearchMode::Facets => self.render_facet_table(frame, area),
             SearchMode::Files => self.render_file_view(frame, area),
         }
     }
 
-    fn render_tag_table(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
+    fn render_facet_table(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
         let query = self.input.trim();
         let highlight_owned = if query.is_empty() {
             None
@@ -226,14 +234,14 @@ impl App {
             Some((query.to_string(), self.config_for_query(query)))
         };
         let highlight_state = highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
-        let rows = build_tag_rows(
-            &self.filtered_tags,
-            &self.tag_scores,
-            &self.data.tags,
+        let rows = build_facet_rows(
+            &self.filtered_facets,
+            &self.facet_scores,
+            &self.data.facets,
             highlight_state,
         );
 
-        let widths = self.tag_widths.clone().unwrap_or_else(|| {
+        let widths = self.facet_widths.clone().unwrap_or_else(|| {
             vec![
                 Constraint::Percentage(50),
                 Constraint::Length(8),
@@ -241,9 +249,9 @@ impl App {
             ]
         });
         let header_cells = self
-            .tag_headers
+            .facet_headers
             .clone()
-            .unwrap_or_else(|| vec!["Tag".into(), "Count".into(), "Score".into()])
+            .unwrap_or_else(|| vec!["Facet".into(), "Count".into(), "Score".into()])
             .into_iter()
             .map(Cell::from)
             .collect::<Vec<_>>();
@@ -256,7 +264,7 @@ impl App {
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
-                    .title("Matching tags")
+                    .title(self.mode.table_title(&self.ui))
                     .borders(Borders::ALL)
                     .border_style(Style::new().fg(Color::Green)),
             )
@@ -310,7 +318,7 @@ impl App {
             .block(
                 Block::default()
                     .border_type(BorderType::Rounded)
-                    .title("Matching files")
+                    .title(SearchMode::Files.table_title(&self.ui))
                     .borders(Borders::ALL)
                     .border_style(Style::new().fg(Color::Magenta)),
             )
@@ -347,7 +355,7 @@ impl App {
                 .block(
                     Block::default()
                         .border_type(BorderType::Rounded)
-                        .title("Selection details")
+                        .title(self.ui.detail_panel_title.as_str())
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::Gray)),
                 );
@@ -358,7 +366,7 @@ impl App {
                 .block(
                     Block::default()
                         .border_type(BorderType::Rounded)
-                        .title("Selection details")
+                        .title(self.ui.detail_panel_title.as_str())
                         .borders(Borders::ALL)
                         .border_style(Style::new().fg(Color::Gray)),
                 );
@@ -419,8 +427,8 @@ impl App {
 
     fn switch_mode(&mut self) {
         self.mode = match self.mode {
-            SearchMode::Tags => SearchMode::Files,
-            SearchMode::Files => SearchMode::Tags,
+            SearchMode::Facets => SearchMode::Files,
+            SearchMode::Files => SearchMode::Facets,
         };
         self.table_state.select(Some(0));
         self.refresh();
@@ -445,14 +453,14 @@ impl App {
 
     fn filtered_len(&self) -> usize {
         match self.mode {
-            SearchMode::Tags => self.filtered_tags.len(),
+            SearchMode::Facets => self.filtered_facets.len(),
             SearchMode::Files => self.filtered_files.len(),
         }
     }
 
     fn refresh(&mut self) {
         match self.mode {
-            SearchMode::Tags => self.refresh_tags(),
+            SearchMode::Facets => self.refresh_facets(),
             SearchMode::Files => self.refresh_files(),
         }
         if self.filtered_len() == 0 {
@@ -467,27 +475,32 @@ impl App {
         }
     }
 
-    pub(crate) fn refresh_tags(&mut self) {
+    pub(crate) fn refresh_facets(&mut self) {
         let query = self.input.trim();
         if query.is_empty() {
-            self.filtered_tags = (0..self.data.tags.len()).collect();
-            self.tag_scores = vec![0; self.data.tags.len()];
-            self.filtered_tags
-                .sort_by(|&a, &b| self.data.tags[a].name.cmp(&self.data.tags[b].name));
+            self.filtered_facets = (0..self.data.facets.len()).collect();
+            self.facet_scores = vec![0; self.data.facets.len()];
+            self.filtered_facets
+                .sort_by(|&a, &b| self.data.facets[a].name.cmp(&self.data.facets[b].name));
             return;
         }
 
         let config = self.config_for_query(query);
-        let haystacks: Vec<&str> = self.data.tags.iter().map(|tag| tag.name.as_str()).collect();
+        let haystacks: Vec<&str> = self
+            .data
+            .facets
+            .iter()
+            .map(|facet| facet.name.as_str())
+            .collect();
         let ranked = match_list(query, &haystacks, &config);
-        self.filtered_tags = Vec::new();
-        self.tag_scores = Vec::new();
+        self.filtered_facets = Vec::new();
+        self.facet_scores = Vec::new();
         for entry in ranked {
             if entry.score == 0 {
                 continue;
             }
-            self.filtered_tags.push(entry.index as usize);
-            self.tag_scores.push(entry.score);
+            self.filtered_facets.push(entry.index as usize);
+            self.facet_scores.push(entry.score);
         }
     }
 
@@ -538,7 +551,7 @@ impl App {
 
         let dataset_len = match self.mode {
             SearchMode::Files => self.data.files.len(),
-            SearchMode::Tags => self.data.tags.len(),
+            SearchMode::Facets => self.data.facets.len(),
         };
 
         if dataset_len >= PREFILTER_ENABLE_THRESHOLD {

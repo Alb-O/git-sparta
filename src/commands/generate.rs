@@ -83,21 +83,23 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
     }
 
     let patterns: Vec<String> = unique_patterns.into_iter().collect();
-    let tags = tag_counts
+    let facets = tag_counts
         .into_iter()
-        .map(|(name, count)| tui::TagRow { name, count })
+        .map(|(name, count)| tui::FacetRow { name, count })
         .collect();
     let files = file_map
         .into_iter()
         .map(|(path, tags)| tui::FileRow::new(path, tags.into_iter().collect()))
         .collect();
 
-    let outcome = tui::run(tui::SearchData {
+    let outcome = tui::Searcher::new(tui::SearchData {
         repo_display: root.display().to_string(),
         user_filter: tag.to_string(),
-        tags,
+        facets,
         files,
-    })?;
+    })
+    .with_ui_config(tui::UiConfig::tags_and_files())
+    .run()?;
 
     if !outcome.accepted {
         anyhow::bail!("aborted by user");

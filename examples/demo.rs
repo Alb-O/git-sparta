@@ -1,64 +1,64 @@
-use git_sparta::tui::{self, FileRow, SearchData, TagRow};
+use git_sparta::tui::{self, FacetRow, FileRow, SearchData};
 
 fn main() -> anyhow::Result<()> {
-    let tags = vec![
-        TagRow {
+    let facets = vec![
+        FacetRow {
             name: "app/core".into(),
             count: 12,
         },
-        TagRow {
+        FacetRow {
             name: "app/ui".into(),
             count: 9,
         },
-        TagRow {
+        FacetRow {
             name: "docs".into(),
             count: 4,
         },
-        TagRow {
+        FacetRow {
             name: "ops".into(),
             count: 6,
         },
-        TagRow {
+        FacetRow {
             name: "tooling".into(),
             count: 8,
         },
-        TagRow {
+        FacetRow {
             name: "infra".into(),
             count: 5,
         },
-        TagRow {
+        FacetRow {
             name: "ci".into(),
             count: 3,
         },
-        TagRow {
+        FacetRow {
             name: "tests".into(),
             count: 7,
         },
-        TagRow {
+        FacetRow {
             name: "examples".into(),
             count: 2,
         },
-        TagRow {
+        FacetRow {
             name: "legacy".into(),
             count: 1,
         },
-        TagRow {
+        FacetRow {
             name: "frontend".into(),
             count: 10,
         },
-        TagRow {
+        FacetRow {
             name: "backend".into(),
             count: 11,
         },
-        TagRow {
+        FacetRow {
             name: "api".into(),
             count: 6,
         },
-        TagRow {
+        FacetRow {
             name: "db".into(),
             count: 4,
         },
-        TagRow {
+        FacetRow {
             name: "scripts".into(),
             count: 3,
         },
@@ -126,7 +126,7 @@ fn main() -> anyhow::Result<()> {
     let data = SearchData {
         repo_display: "demo-repo".into(),
         user_filter: "demo".into(),
-        tags,
+        facets,
         files,
     };
 
