@@ -8,13 +8,14 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{
-        Block, Borders, Cell, Clear, Paragraph, Row, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Table, TableState, Wrap,
+        Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Table,
+        TableState, Wrap,
     },
 };
 
-use crate::tui::types::{SearchData, SearchMode, SearchOutcome, highlight_cell};
-use frizbee::{Config, match_indices, match_list};
+use crate::tui::types::{SearchData, SearchMode, SearchOutcome};
+use crate::tui::utils::{build_file_rows, build_tag_rows};
+use frizbee::{Config, match_list};
 
 // Enable the fast prefilter only when the dataset is large enough to
 // benefit from it. Threshold is number of haystacks (files or tags).
@@ -198,32 +199,19 @@ impl App {
     }
 
     fn render_tag_table(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let highlight_state = {
-            let query = self.input.trim();
-            if query.is_empty() {
-                None
-            } else {
-                Some((query.to_string(), self.config_for_query(query)))
-            }
+        let query = self.input.trim();
+        let highlight_owned = if query.is_empty() {
+            None
+        } else {
+            Some((query.to_string(), self.config_for_query(query)))
         };
-
-        let rows: Vec<Row> = self
-            .filtered_tags
-            .iter()
-            .enumerate()
-            .map(|(idx, &actual_index)| {
-                let tag = &self.data.tags[actual_index];
-                let score = self.tag_scores.get(idx).copied().unwrap_or_default();
-                let highlight = highlight_state
-                    .as_ref()
-                    .and_then(|(needle, config)| Self::highlight_for(needle, config, &tag.name));
-                Row::new([
-                    highlight_cell(&tag.name, highlight),
-                    Cell::from(tag.count.to_string()),
-                    Cell::from(score.to_string()),
-                ])
-            })
-            .collect();
+        let highlight_state = highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
+        let rows = build_tag_rows(
+            &self.filtered_tags,
+            &self.tag_scores,
+            &self.data.tags,
+            highlight_state,
+        );
 
         let widths = [
             Constraint::Percentage(50),
@@ -250,35 +238,19 @@ impl App {
         let table_area = areas[0];
         let detail_area = areas[1];
 
-        let highlight_state = {
-            let query = self.input.trim();
-            if query.is_empty() {
-                None
-            } else {
-                Some((query.to_string(), self.config_for_query(query)))
-            }
+        let query = self.input.trim();
+        let highlight_owned = if query.is_empty() {
+            None
+        } else {
+            Some((query.to_string(), self.config_for_query(query)))
         };
-
-        let rows: Vec<Row> = self
-            .filtered_files
-            .iter()
-            .enumerate()
-            .map(|(idx, &actual_index)| {
-                let entry = &self.data.files[actual_index];
-                let score = self.file_scores.get(idx).copied().unwrap_or_default();
-                let path_highlight = highlight_state
-                    .as_ref()
-                    .and_then(|(needle, config)| Self::highlight_for(needle, config, &entry.path));
-                let tag_highlight = highlight_state.as_ref().and_then(|(needle, config)| {
-                    Self::highlight_for(needle, config, &entry.display_tags)
-                });
-                Row::new([
-                    highlight_cell(&entry.path, path_highlight),
-                    highlight_cell(&entry.display_tags, tag_highlight),
-                    Cell::from(score.to_string()),
-                ])
-            })
-            .collect();
+        let highlight_state = highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
+        let rows = build_file_rows(
+            &self.filtered_files,
+            &self.file_scores,
+            &self.data.files,
+            highlight_state,
+        );
 
         let widths = [
             Constraint::Percentage(55),
@@ -534,9 +506,5 @@ impl App {
         }
 
         config
-    }
-
-    fn highlight_for(query: &str, config: &Config, text: &str) -> Option<Vec<usize>> {
-        match_indices(query, text, config).map(|m| m.indices)
     }
 }
