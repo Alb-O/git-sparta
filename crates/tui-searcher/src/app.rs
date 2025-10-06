@@ -13,12 +13,10 @@ use ratatui::{
     },
 };
 
-use crate::tui::types::{SearchData, SearchMode, SearchOutcome};
-use crate::tui::utils::{build_file_rows, build_tag_rows};
+use crate::types::{SearchData, SearchMode, SearchOutcome};
+use crate::utils::{build_file_rows, build_tag_rows};
 use frizbee::{Config, match_list};
 
-// Enable the fast prefilter only when the dataset is large enough to
-// benefit from it. Threshold is number of haystacks (files or tags).
 const PREFILTER_ENABLE_THRESHOLD: usize = 1_000;
 
 pub fn run(data: SearchData) -> Result<SearchOutcome> {
@@ -65,8 +63,6 @@ impl App {
     pub fn new(data: SearchData) -> Self {
         let mut table_state = TableState::default();
         table_state.select(Some(0));
-        // Disable the fast prefilter by default so substitution typos
-        // (e.g. 'm' <-> 'n') are handled by the Smith-Waterman scorer.
         let matcher_config = Config {
             prefilter: false,
             ..Config::default()
@@ -499,8 +495,6 @@ impl App {
     pub(crate) fn config_for_query(&self, query: &str) -> Config {
         let mut config = self.matcher_config.clone();
 
-        // Compute allowed typos based on query length (same heuristic as
-        // before). We'll only set max_typos when enabling the prefilter.
         let length = query.chars().count();
         let mut allowed_typos: u16 = match length {
             0 => 0,
@@ -520,12 +514,9 @@ impl App {
         };
 
         if dataset_len >= PREFILTER_ENABLE_THRESHOLD {
-            // Large dataset: enable prefilter and set max_typos heuristic.
             config.prefilter = true;
             config.max_typos = Some(allowed_typos);
         } else {
-            // Small dataset: prefer correctness; disable prefilter so Smith-
-            // Waterman runs for substitution typos.
             config.prefilter = false;
             config.max_typos = None;
         }

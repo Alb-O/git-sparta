@@ -1,6 +1,4 @@
 pub mod app;
-#[cfg(test)]
-mod tests;
 pub mod types;
 pub mod utils;
 

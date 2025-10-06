@@ -2,7 +2,7 @@ use frizbee::Config;
 use frizbee::match_indices;
 use ratatui::widgets::{Cell, Row};
 
-use crate::tui::types::{FileRow, TagRow, highlight_cell};
+use crate::types::{FileRow, TagRow, highlight_cell};
 
 /// Create an Option containing references to the needle string and Config for highlighting.
 /// Accepts an owned pair elsewhere and the caller should invoke `.as_ref().map(|(s,c)| (s.as_str(), c))`.
