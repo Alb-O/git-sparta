@@ -1,0 +1,3 @@
+[submodule "vendor/frizbee"]
+	path = vendor/frizbee
+	url = https://github.com/saghen/frizbee
