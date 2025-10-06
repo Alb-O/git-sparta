@@ -6,7 +6,8 @@ use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
     style::{Color, Style},
-    widgets::{Cell, Clear, Paragraph, Row, Table, TableState},
+    text::Line,
+    widgets::{Cell, Clear, Paragraph, Row, Table, TableState, Tabs},
 };
 
 use crate::types::{SearchData, SearchMode, SearchOutcome, UiConfig};
@@ -101,14 +102,19 @@ impl App {
             horizontal: 1,
         });
 
-        // Input (top line) and results below
+        // Input (top line), tabs (line under input), and results below
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Min(2)])
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Length(1),
+                Constraint::Min(1),
+            ])
             .split(area);
 
         self.render_input(frame, layout[0]);
-        self.render_results(frame, layout[1]);
+        self.render_tabs(frame, layout[1]);
+        self.render_results(frame, layout[2]);
 
         // Minimal empty state
         if self.filtered_len() == 0 {
@@ -134,6 +140,24 @@ impl App {
         };
         let input = Paragraph::new(input_text).style(Style::default().fg(Color::LightCyan));
         frame.render_widget(input, area);
+    }
+
+    fn render_tabs(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        let titles = ["Tags", "Files"]
+            .into_iter()
+            .map(|t| Line::from(format!(" {} ", t)))
+            .collect::<Vec<Line>>();
+        let selected = match self.mode {
+            SearchMode::Facets => 0,
+            SearchMode::Files => 1,
+        };
+
+        let tabs = Tabs::new(titles)
+            .select(selected)
+            .divider(" ")
+            .highlight_style(Style::default().fg(Color::Yellow));
+
+        frame.render_widget(tabs, area);
     }
 
     fn render_results(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
@@ -234,6 +258,18 @@ impl App {
             }
             KeyCode::Tab => {
                 self.switch_mode();
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                // move to previous tab (Tags)
+                self.mode = SearchMode::Facets;
+                self.table_state.select(Some(0));
+                self.refresh();
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                // move to next tab (Files)
+                self.mode = SearchMode::Files;
+                self.table_state.select(Some(0));
+                self.refresh();
             }
             KeyCode::Backspace => {
                 self.input.pop();
