@@ -75,7 +75,9 @@ mod tests {
     fn config_allows_typos_for_short_queries() {
         let app = App::new(sample_data());
         let config = app.config_for_query("uo");
-        assert_eq!(config.max_typos, Some(1));
+        // Prefilter is disabled by default; max_typos will be None so that
+        // Smith-Waterman alignment always runs and substitution typos are handled.
+        assert!(config.max_typos.is_none());
     }
 
     #[test]
@@ -103,6 +105,32 @@ mod tests {
             .map(|&idx| app.data.files[idx].path.as_str())
             .collect();
         assert!(paths.contains(&"ui.rs"));
+    }
+
+    #[test]
+    fn neighbor_substitution_matches_frontend() {
+        // Verify a single-character neighbor substitution (m <-> n) is accepted
+        // when prefilter is disabled and Smith-Waterman scoring runs.
+        let mut data = sample_data();
+        data.files = vec![FileRow::new("frontend".to_string(), vec![])]
+            .into_iter()
+            .chain(data.files.into_iter())
+            .collect();
+
+        let mut app = App::new(data);
+        app.mode = SearchMode::Files;
+        app.input = "fromt".to_string();
+        app.refresh_files();
+        let paths: Vec<&str> = app
+            .filtered_files
+            .iter()
+            .map(|&idx| app.data.files[idx].path.as_str())
+            .collect();
+
+        assert!(
+            paths.contains(&"frontend"),
+            "expected 'frontend' to match 'fromt'"
+        );
     }
 }
 
@@ -184,7 +212,9 @@ impl App {
         let mut table_state = TableState::default();
         table_state.select(Some(0));
         let mut matcher_config = Config::default();
-        matcher_config.prefilter = true;
+        // Disable the fast prefilter by default so substitution typos
+        // (e.g. 'm' <-> 'n') are handled by the Smith-Waterman scorer.
+        matcher_config.prefilter = false;
         let mut app = Self {
             data,
             mode: SearchMode::Tags,
@@ -628,7 +658,10 @@ impl App {
         if let Ok(max_reasonable) = u16::try_from(length.saturating_sub(1)) {
             allowed_typos = allowed_typos.min(max_reasonable);
         }
-        config.max_typos = Some(allowed_typos);
+        // Disable the prefilter (by setting max_typos to None) so Smith-Waterman
+        // alignment always evaluates candidates and substitution typos like
+        // 'm' <-> 'n' are handled correctly.
+        config.max_typos = None;
         config
     }
 
