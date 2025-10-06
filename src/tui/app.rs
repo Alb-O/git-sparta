@@ -16,6 +16,10 @@ use ratatui::{
 use crate::tui::types::{SearchData, SearchMode, SearchOutcome, highlight_cell};
 use frizbee::{Config, match_indices, match_list};
 
+// Enable the fast prefilter only when the dataset is large enough to
+// benefit from it. Threshold is number of haystacks (files or tags).
+const PREFILTER_ENABLE_THRESHOLD: usize = 1_000;
+
 pub fn run(data: SearchData) -> Result<SearchOutcome> {
     let mut terminal = ratatui::init();
     terminal.clear()?;
@@ -495,12 +499,40 @@ impl App {
         }
     }
 
-    pub(crate) fn config_for_query(&self, _query: &str) -> Config {
+    pub(crate) fn config_for_query(&self, query: &str) -> Config {
         let mut config = self.matcher_config.clone();
-        // We intentionally disable the prefilter so Smith-Waterman alignment
-        // always evaluates candidates and substitution typos (like 'm' <-> 'n')
-        // are handled correctly.
-        config.max_typos = None;
+
+        // Compute allowed typos based on query length (same heuristic as
+        // before). We'll only set max_typos when enabling the prefilter.
+        let length = query.chars().count();
+        let mut allowed_typos: u16 = match length {
+            0 => 0,
+            1 => 0,
+            2..=4 => 1,
+            5..=7 => 2,
+            8..=12 => 3,
+            _ => 4,
+        };
+        if let Ok(max_reasonable) = u16::try_from(length.saturating_sub(1)) {
+            allowed_typos = allowed_typos.min(max_reasonable);
+        }
+
+        let dataset_len = match self.mode {
+            SearchMode::Files => self.data.files.len(),
+            SearchMode::Tags => self.data.tags.len(),
+        };
+
+        if dataset_len >= PREFILTER_ENABLE_THRESHOLD {
+            // Large dataset: enable prefilter and set max_typos heuristic.
+            config.prefilter = true;
+            config.max_typos = Some(allowed_typos);
+        } else {
+            // Small dataset: prefer correctness; disable prefilter so Smith-
+            // Waterman runs for substitution typos.
+            config.prefilter = false;
+            config.max_typos = None;
+        }
+
         config
     }
 
