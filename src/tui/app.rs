@@ -1,4 +1,4 @@
-use std::{mem, time::Duration};
+use std::time::Duration;
 
 use anyhow::Result;
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -13,159 +13,8 @@ use ratatui::{
     },
 };
 
+use crate::tui::types::{SearchData, SearchMode, SearchOutcome, highlight_cell};
 use frizbee::{Config, match_indices, match_list};
-
-#[derive(Debug, Clone)]
-pub struct TagRow {
-    pub name: String,
-    pub count: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct FileRow {
-    pub path: String,
-    pub tags: Vec<String>,
-    pub display_tags: String,
-    search_text: String,
-}
-
-impl FileRow {
-    #[must_use]
-    pub fn new(path: String, tags: Vec<String>) -> Self {
-        let mut tags_sorted = tags;
-        tags_sorted.sort();
-        let display_tags = tags_sorted.join(", ");
-        let search_text = if display_tags.is_empty() {
-            path.clone()
-        } else {
-            format!("{path} {display_tags}")
-        };
-        Self {
-            path,
-            tags: tags_sorted,
-            display_tags,
-            search_text,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample_data() -> SearchData {
-        SearchData {
-            repo_display: "example/repo".to_string(),
-            user_filter: "".to_string(),
-            tags: vec![
-                TagRow {
-                    name: "docs".to_string(),
-                    count: 4,
-                },
-                TagRow {
-                    name: "tests".to_string(),
-                    count: 2,
-                },
-            ],
-            files: vec![FileRow::new("ui.rs".to_string(), vec!["ui".to_string()])],
-        }
-    }
-
-    #[test]
-    fn config_allows_typos_for_short_queries() {
-        let app = App::new(sample_data());
-        let config = app.config_for_query("uo");
-        // Prefilter is disabled by default; max_typos will be None so that
-        // Smith-Waterman alignment always runs and substitution typos are handled.
-        assert!(config.max_typos.is_none());
-    }
-
-    #[test]
-    fn subsequence_query_matches_tags() {
-        let mut app = App::new(sample_data());
-        app.input = "cs".to_string();
-        app.refresh_tags();
-        let names: Vec<&str> = app
-            .filtered_tags
-            .iter()
-            .map(|&idx| app.data.tags[idx].name.as_str())
-            .collect();
-        assert!(names.contains(&"docs"));
-    }
-
-    #[test]
-    fn substitution_query_matches_files() {
-        let mut app = App::new(sample_data());
-        app.mode = SearchMode::Files;
-        app.input = "uo".to_string();
-        app.refresh_files();
-        let paths: Vec<&str> = app
-            .filtered_files
-            .iter()
-            .map(|&idx| app.data.files[idx].path.as_str())
-            .collect();
-        assert!(paths.contains(&"ui.rs"));
-    }
-
-    #[test]
-    fn neighbor_substitution_matches_frontend() {
-        // Verify a single-character neighbor substitution (m <-> n) is accepted
-        // when prefilter is disabled and Smith-Waterman scoring runs.
-        let mut data = sample_data();
-        data.files = vec![FileRow::new("frontend".to_string(), vec![])]
-            .into_iter()
-            .chain(data.files.into_iter())
-            .collect();
-
-        let mut app = App::new(data);
-        app.mode = SearchMode::Files;
-        app.input = "fromt".to_string();
-        app.refresh_files();
-        let paths: Vec<&str> = app
-            .filtered_files
-            .iter()
-            .map(|&idx| app.data.files[idx].path.as_str())
-            .collect();
-
-        assert!(
-            paths.contains(&"frontend"),
-            "expected 'frontend' to match 'fromt'"
-        );
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchMode {
-    Tags,
-    Files,
-}
-
-impl SearchMode {
-    fn title(self) -> &'static str {
-        match self {
-            SearchMode::Tags => "Tag search",
-            SearchMode::Files => "File search",
-        }
-    }
-
-    fn hint(self) -> &'static str {
-        match self {
-            SearchMode::Tags => "Type to filter tags. Press Tab to view files.",
-            SearchMode::Files => "Type to filter files by path or tag. Press Tab to view tags.",
-        }
-    }
-}
-
-pub struct SearchData {
-    pub repo_display: String,
-    pub user_filter: String,
-    pub tags: Vec<TagRow>,
-    pub files: Vec<FileRow>,
-}
-
-pub struct SearchOutcome {
-    pub accepted: bool,
-}
 
 pub fn run(data: SearchData) -> Result<SearchOutcome> {
     let mut terminal = ratatui::init();
@@ -195,26 +44,28 @@ pub fn run(data: SearchData) -> Result<SearchOutcome> {
     Ok(result)
 }
 
-struct App {
-    data: SearchData,
-    mode: SearchMode,
-    input: String,
-    table_state: TableState,
-    filtered_tags: Vec<usize>,
-    filtered_files: Vec<usize>,
-    tag_scores: Vec<u16>,
-    file_scores: Vec<u16>,
-    matcher_config: Config,
+pub struct App {
+    pub data: SearchData,
+    pub mode: SearchMode,
+    pub input: String,
+    pub table_state: TableState,
+    pub filtered_tags: Vec<usize>,
+    pub filtered_files: Vec<usize>,
+    pub tag_scores: Vec<u16>,
+    pub file_scores: Vec<u16>,
+    pub matcher_config: Config,
 }
 
 impl App {
-    fn new(data: SearchData) -> Self {
+    pub fn new(data: SearchData) -> Self {
         let mut table_state = TableState::default();
         table_state.select(Some(0));
-        let mut matcher_config = Config::default();
         // Disable the fast prefilter by default so substitution typos
         // (e.g. 'm' <-> 'n') are handled by the Smith-Waterman scorer.
-        matcher_config.prefilter = false;
+        let matcher_config = Config {
+            prefilter: false,
+            ..Config::default()
+        };
         let mut app = Self {
             data,
             mode: SearchMode::Tags,
@@ -323,7 +174,7 @@ impl App {
     }
 
     fn render_input(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let title = format!("{}", self.mode.title());
+        let title = self.mode.title().to_string();
         let input = Paragraph::new(self.input.as_str())
             .block(
                 Block::default()
@@ -363,7 +214,7 @@ impl App {
                     .as_ref()
                     .and_then(|(needle, config)| Self::highlight_for(needle, config, &tag.name));
                 Row::new([
-                    Self::highlight_cell(&tag.name, highlight),
+                    highlight_cell(&tag.name, highlight),
                     Cell::from(tag.count.to_string()),
                     Cell::from(score.to_string()),
                 ])
@@ -418,8 +269,8 @@ impl App {
                     Self::highlight_for(needle, config, &entry.display_tags)
                 });
                 Row::new([
-                    Self::highlight_cell(&entry.path, path_highlight),
-                    Self::highlight_cell(&entry.display_tags, tag_highlight),
+                    highlight_cell(&entry.path, path_highlight),
+                    highlight_cell(&entry.display_tags, tag_highlight),
                     Cell::from(score.to_string()),
                 ])
             })
@@ -551,10 +402,10 @@ impl App {
     }
 
     fn move_selection_up(&mut self) {
-        if let Some(selected) = self.table_state.selected() {
-            if selected > 0 {
-                self.table_state.select(Some(selected - 1));
-            }
+        if let Some(selected) = self.table_state.selected()
+            && selected > 0
+        {
+            self.table_state.select(Some(selected - 1));
         }
     }
 
@@ -591,7 +442,7 @@ impl App {
         }
     }
 
-    fn refresh_tags(&mut self) {
+    pub(crate) fn refresh_tags(&mut self) {
         let query = self.input.trim();
         if query.is_empty() {
             self.filtered_tags = (0..self.data.tags.len()).collect();
@@ -615,7 +466,7 @@ impl App {
         }
     }
 
-    fn refresh_files(&mut self) {
+    pub(crate) fn refresh_files(&mut self) {
         let query = self.input.trim();
         if query.is_empty() {
             self.filtered_files = (0..self.data.files.len()).collect();
@@ -630,7 +481,7 @@ impl App {
             .data
             .files
             .iter()
-            .map(|file| file.search_text.as_str())
+            .map(|file| file.search_text())
             .collect();
         let ranked = match_list(query, &haystacks, &config);
         self.filtered_files = Vec::new();
@@ -644,70 +495,16 @@ impl App {
         }
     }
 
-    fn config_for_query(&self, query: &str) -> Config {
+    pub(crate) fn config_for_query(&self, _query: &str) -> Config {
         let mut config = self.matcher_config.clone();
-        let length = query.chars().count();
-        let mut allowed_typos: u16 = match length {
-            0 => 0,
-            1 => 0,
-            2..=4 => 1,
-            5..=7 => 2,
-            8..=12 => 3,
-            _ => 4,
-        };
-        if let Ok(max_reasonable) = u16::try_from(length.saturating_sub(1)) {
-            allowed_typos = allowed_typos.min(max_reasonable);
-        }
-        // Disable the prefilter (by setting max_typos to None) so Smith-Waterman
-        // alignment always evaluates candidates and substitution typos like
-        // 'm' <-> 'n' are handled correctly.
+        // We intentionally disable the prefilter so Smith-Waterman alignment
+        // always evaluates candidates and substitution typos (like 'm' <-> 'n')
+        // are handled correctly.
         config.max_typos = None;
         config
     }
 
     fn highlight_for(query: &str, config: &Config, text: &str) -> Option<Vec<usize>> {
         match_indices(query, text, config).map(|m| m.indices)
-    }
-
-    fn highlight_cell(text: &str, indices: Option<Vec<usize>>) -> Cell<'_> {
-        let Some(mut sorted_indices) = indices.filter(|indices| !indices.is_empty()) else {
-            return Cell::from(text.to_string());
-        };
-        sorted_indices.sort_unstable();
-        let mut next = sorted_indices.into_iter().peekable();
-        let mut buffer = String::new();
-        let mut highlighted = false;
-        let mut spans = Vec::new();
-        let highlight_style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-
-        for (idx, ch) in text.chars().enumerate() {
-            let should_highlight = next.peek().copied() == Some(idx);
-            if should_highlight {
-                next.next();
-            }
-            if should_highlight != highlighted {
-                if !buffer.is_empty() {
-                    let style = if highlighted {
-                        highlight_style
-                    } else {
-                        Style::default()
-                    };
-                    spans.push(Span::styled(mem::take(&mut buffer), style));
-                }
-                highlighted = should_highlight;
-            }
-            buffer.push(ch);
-        }
-
-        if !buffer.is_empty() {
-            let style = if highlighted {
-                highlight_style
-            } else {
-                Style::default()
-            };
-            spans.push(Span::styled(buffer, style));
-        }
-
-        Cell::from(Text::from(Line::from(spans)))
     }
 }
