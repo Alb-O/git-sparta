@@ -23,6 +23,5 @@ tui_searcher = { path = "crates/tui-searcher" }
 
 [workspace]
 members = [
-	".",
 	"crates/tui-searcher",
 ]

@@ -2,6 +2,7 @@
 name = "tui_searcher"
 version = "0.1.0"
 edition = "2024"
+description = "Tui fuzzy searcher"
 license = "MIT"
 
 [dependencies]

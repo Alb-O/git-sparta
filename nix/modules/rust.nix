@@ -12,6 +12,10 @@
         ]
       );
     };
+    # Ensure the path for the top-level crate is set so default-crates logic
+    # doesn't try to read an undefined path (this fixes errors when the crate
+    # is referenced by the rust-flake module).
+    rust-project.crates."git-sparta".path = ../../.;
     packages.default = self'.packages.git-sparta;
   };
 }
