@@ -385,6 +385,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "git-sparta"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dunce",
+ "gix",
+ "owo-colors",
+ "pathdiff",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "walkdir",
+]
+
+[[package]]
 name = "gix"
 version = "0.73.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1747,22 +1763,6 @@ name = "regex-syntax"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
-
-[[package]]
-name = "rust-tools"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "dunce",
- "gix",
- "owo-colors",
- "pathdiff",
- "serde",
- "serde_json",
- "tempfile",
- "walkdir",
-]
 
 [[package]]
 name = "rustix"

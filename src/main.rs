@@ -9,8 +9,11 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "pipeline",
-    about = "Developer tooling for git-driven pipelines",
+    name = "git-sparta",
+    about = "Git Sparse Tagging - Manage sparse submodule checkouts based on git attributes",
+    long_about = "git-sparta enables efficient sparse checkouts of git submodules by using \
+                  git attributes to tag files with project identifiers. Only files tagged \
+                  with matching tags are checked out, reducing disk usage and clone times.",
     version
 )]
 struct Cli {

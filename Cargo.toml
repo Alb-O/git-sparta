@@ -1,7 +1,10 @@
 [package]
-name = "rust-tools"
+name = "git-sparta"
 version = "0.1.0"
 edition = "2024"
+description = "Git Sparse Tagging - Manage sparse submodule checkouts based on git attributes"
+authors = ["Albert O'Shea <albertoshea2@gmail.com>"]
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.100"

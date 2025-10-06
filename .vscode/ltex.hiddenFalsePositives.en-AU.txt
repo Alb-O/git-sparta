@@ -1,0 +1,3 @@
+{"rule":"UPPERCASE_SENTENCE_START","sentence":".*"}
+{"rule":"NOUN_VERB_CONFUSION","sentence":"(?i)\\bcheckout\\b"}
+{"rule":"PRP_MD_NN","sentence":"(?i)\\bvendor\\b"}
