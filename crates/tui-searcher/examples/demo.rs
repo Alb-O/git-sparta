@@ -1,32 +1,32 @@
-use tui_searcher::{FacetRow, FileRow, SearchData, Searcher};
+use tui_searcher::{
+    FacetRow, FileRow, SearchData, SearchMode, SearchSelection, Searcher, UiConfig,
+};
 
 fn main() -> anyhow::Result<()> {
     // Build sample data
-    let facets = vec![
-        FacetRow {
-            name: "frontend".into(),
-            count: 3,
-        },
-        FacetRow {
-            name: "backend".into(),
-            count: 2,
-        },
-    ];
+    let facets = vec![FacetRow::new("frontend", 3), FacetRow::new("backend", 2)];
     let files = vec![
-        FileRow::new("src/main.rs".into(), vec!["frontend".into()]),
-        FileRow::new("src/lib.rs".into(), vec!["backend".into()]),
+        FileRow::new("src/main.rs", ["frontend"]),
+        FileRow::new("src/lib.rs", ["backend"]),
     ];
 
-    let data = SearchData {
-        repo_display: "example/repo".into(),
-        user_filter: "".into(),
-        facets,
-        files,
-    };
+    let data = SearchData::new()
+        .with_context("example/repo")
+        .with_initial_query("")
+        .with_facets(facets)
+        .with_files(files);
 
     // Minimal searcher configuration with prompt
-    let searcher = Searcher::new(data).with_input_title("workspace-prototype");
+    let searcher = Searcher::new(data)
+        .with_ui_config(UiConfig::tags_and_files())
+        .with_input_title("workspace-prototype")
+        .with_start_mode(SearchMode::Facets);
     let outcome = searcher.run()?;
     println!("Accepted? {}", outcome.accepted);
+    match outcome.selection {
+        Some(SearchSelection::File(file)) => println!("Selected file: {}", file.path),
+        Some(SearchSelection::Facet(facet)) => println!("Selected facet: {}", facet.name),
+        None => println!("No selection"),
+    }
     Ok(())
 }

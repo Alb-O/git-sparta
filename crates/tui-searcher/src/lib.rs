@@ -9,7 +9,10 @@ pub mod utils;
 pub use app::run;
 pub use input::SearchInput;
 pub use theme::{LIGHT, SLATE, SOLARIZED, Theme};
-pub use types::{FacetRow, FileRow, PaneUiConfig, SearchData, SearchMode, UiConfig};
+pub use types::{
+    FacetRow, FileRow, PaneUiConfig, SearchData, SearchMode, SearchOutcome, SearchSelection,
+    UiConfig,
+};
 
 use ratatui::layout::Constraint;
 
@@ -25,6 +28,7 @@ pub struct Searcher {
     file_widths: Option<Vec<Constraint>>,
     ui_config: Option<UiConfig>,
     theme: Option<Theme>,
+    start_mode: Option<SearchMode>,
 }
 
 impl Searcher {
@@ -39,7 +43,14 @@ impl Searcher {
             file_widths: None,
             ui_config: None,
             theme: None,
+            start_mode: None,
         }
+    }
+
+    /// Create a searcher pre-populated with files from the filesystem rooted at `path`.
+    pub fn filesystem(path: impl AsRef<std::path::Path>) -> anyhow::Result<Self> {
+        let data = SearchData::from_filesystem(path)?;
+        Ok(Self::new(data).with_start_mode(SearchMode::Files))
     }
 
     pub fn with_input_title(mut self, title: impl Into<String>) -> Self {
@@ -81,6 +92,11 @@ impl Searcher {
         self
     }
 
+    pub fn with_start_mode(mut self, mode: SearchMode) -> Self {
+        self.start_mode = Some(mode);
+        self
+    }
+
     /// Run the interactive searcher with the configured options.
     pub fn run(self) -> anyhow::Result<crate::types::SearchOutcome> {
         // Build an App and apply optional customizations, then run it.
@@ -105,6 +121,9 @@ impl Searcher {
         }
         if let Some(theme) = self.theme {
             app.set_theme(theme);
+        }
+        if let Some(mode) = self.start_mode {
+            app.set_mode(mode);
         }
 
         app.run()

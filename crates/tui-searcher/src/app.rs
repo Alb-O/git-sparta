@@ -12,7 +12,7 @@ use crate::input::SearchInput;
 use crate::tables;
 use crate::tabs;
 use crate::theme::Theme;
-use crate::types::{SearchData, SearchMode, SearchOutcome, UiConfig};
+use crate::types::{SearchData, SearchMode, SearchOutcome, SearchSelection, UiConfig};
 use frizbee::{Config, match_list};
 
 const PREFILTER_ENABLE_THRESHOLD: usize = 1_000;
@@ -49,17 +49,19 @@ impl<'a> App<'a> {
             prefilter: false,
             ..Config::default()
         };
+        let initial_query = data.initial_query.clone();
+        let context_label = data.context_label.clone();
         let mut app = Self {
             data,
             mode: SearchMode::Facets,
-            search_input: SearchInput::default(),
+            search_input: SearchInput::new(initial_query),
             table_state,
             filtered_facets: Vec::new(),
             filtered_files: Vec::new(),
             facet_scores: Vec::new(),
             file_scores: Vec::new(),
             matcher_config,
-            input_title: None,
+            input_title: context_label,
             facet_headers: None,
             file_headers: None,
             facet_widths: None,
@@ -74,6 +76,14 @@ impl<'a> App<'a> {
     /// Set the active theme for the app.
     pub fn set_theme(&mut self, theme: Theme) {
         self.theme = theme;
+    }
+
+    pub fn set_mode(&mut self, mode: SearchMode) {
+        if self.mode != mode {
+            self.mode = mode;
+            self.table_state.select(Some(0));
+            self.refresh();
+        }
     }
 
     /// Run the interactive application. This is a method so callers can
@@ -196,10 +206,19 @@ impl<'a> App<'a> {
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<SearchOutcome>> {
         match key.code {
             KeyCode::Esc => {
-                return Ok(Some(SearchOutcome { accepted: false }));
+                return Ok(Some(SearchOutcome {
+                    accepted: false,
+                    selection: None,
+                    query: self.search_input.text().to_string(),
+                }));
             }
             KeyCode::Enter => {
-                return Ok(Some(SearchOutcome { accepted: true }));
+                let selection = self.current_selection();
+                return Ok(Some(SearchOutcome {
+                    accepted: true,
+                    selection,
+                    query: self.search_input.text().to_string(),
+                }));
             }
             KeyCode::Tab => {
                 self.switch_mode();
@@ -242,6 +261,28 @@ impl<'a> App<'a> {
             let len = self.filtered_len();
             if selected + 1 < len {
                 self.table_state.select(Some(selected + 1));
+            }
+        }
+    }
+
+    fn current_selection(&self) -> Option<SearchSelection> {
+        let selected = self.table_state.selected()?;
+        match self.mode {
+            SearchMode::Facets => {
+                let index = *self.filtered_facets.get(selected)?;
+                self.data
+                    .facets
+                    .get(index)
+                    .cloned()
+                    .map(SearchSelection::Facet)
+            }
+            SearchMode::Files => {
+                let index = *self.filtered_files.get(selected)?;
+                self.data
+                    .files
+                    .get(index)
+                    .cloned()
+                    .map(SearchSelection::File)
             }
         }
     }
