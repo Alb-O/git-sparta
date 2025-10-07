@@ -1,8 +1,9 @@
 use frizbee::Config;
 use ratatui::Frame;
-use ratatui::layout::Constraint;
+use ratatui::layout::{Constraint, Rect};
 use ratatui::style::{Color, Style};
-use ratatui::widgets::{Cell, Row, Table};
+use ratatui::text::{Line, Span, Text};
+use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
 use crate::types::UiConfig;
 use crate::utils::{build_facet_rows, build_file_rows};
@@ -76,6 +77,51 @@ pub fn render_table(
                 )
                 .highlight_symbol("▶ ");
             frame.render_stateful_widget(table, area, table_state);
+
+            // Draw a horizontal separator under the header to replace the
+            // previous blank line. We render a Paragraph filled with box
+            // drawing characters across the table width and overlay it.
+            let header_height = 1u16; // header.height() was set to 1 above
+            if header_height < area.height {
+                let sep_y = area.y + header_height;
+                if sep_y < area.y + area.height {
+                    let width = area.width as usize;
+                    if width == 0 {
+                        // nothing to draw
+                    } else if width <= 2 {
+                        let line = " ".repeat(width);
+                        let para =
+                            Paragraph::new(line).style(Style::new().bg(Color::Rgb(15, 23, 42)));
+                        let sep_rect = Rect {
+                            x: area.x,
+                            y: sep_y,
+                            width: area.width,
+                            height: 1,
+                        };
+                        frame.render_widget(para, sep_rect);
+                    } else {
+                        let middle = "─".repeat(width - 2);
+                        let spans = vec![
+                            Span::styled(" ", Style::new().bg(Color::Rgb(15, 23, 42))),
+                            Span::styled(
+                                &middle,
+                                Style::new()
+                                    .bg(Color::Rgb(15, 23, 42))
+                                    .fg(Color::Rgb(226, 232, 240)),
+                            ),
+                            Span::styled(" ", Style::new().bg(Color::Rgb(15, 23, 42))),
+                        ];
+                        let para = Paragraph::new(Text::from(Line::from(spans)));
+                        let sep_rect = Rect {
+                            x: area.x,
+                            y: sep_y,
+                            width: area.width,
+                            height: 1,
+                        };
+                        frame.render_widget(para, sep_rect);
+                    }
+                }
+            }
         }
         TablePane::Files {
             filtered,
@@ -117,6 +163,48 @@ pub fn render_table(
                 )
                 .highlight_symbol("▶ ");
             frame.render_stateful_widget(table, area, table_state);
+
+            let header_height = 1u16;
+            if header_height < area.height {
+                let sep_y = area.y + header_height;
+                if sep_y < area.y + area.height {
+                    let width = area.width as usize;
+                    if width == 0 {
+                        // nothing
+                    } else if width <= 2 {
+                        let line = " ".repeat(width);
+                        let para =
+                            Paragraph::new(line).style(Style::new().bg(Color::Rgb(15, 23, 42)));
+                        let sep_rect = Rect {
+                            x: area.x,
+                            y: sep_y,
+                            width: area.width,
+                            height: 1,
+                        };
+                        frame.render_widget(para, sep_rect);
+                    } else {
+                        let middle = "─".repeat(width - 2);
+                        let spans = vec![
+                            Span::styled(" ", Style::new().bg(Color::Rgb(15, 23, 42))),
+                            Span::styled(
+                                &middle,
+                                Style::new()
+                                    .bg(Color::Rgb(15, 23, 42))
+                                    .fg(Color::Rgb(226, 232, 240)),
+                            ),
+                            Span::styled(" ", Style::new().bg(Color::Rgb(15, 23, 42))),
+                        ];
+                        let para = Paragraph::new(Text::from(Line::from(spans)));
+                        let sep_rect = Rect {
+                            x: area.x,
+                            y: sep_y,
+                            width: area.width,
+                            height: 1,
+                        };
+                        frame.render_widget(para, sep_rect);
+                    }
+                }
+            }
         }
     }
 }
