@@ -1,5 +1,7 @@
 pub mod app;
 pub mod input;
+pub mod tables;
+pub mod tabs;
 pub mod types;
 pub mod utils;
 

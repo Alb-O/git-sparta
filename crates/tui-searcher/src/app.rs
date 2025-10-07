@@ -5,14 +5,14 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
-    style::{Color, Style, Stylize},
-    text::Line,
-    widgets::{Cell, Clear, Paragraph, Row, Table, TableState, Tabs},
+    style::{Color, Style},
+    widgets::{Clear, Paragraph, TableState},
 };
 
 use crate::input::SearchInput;
+use crate::tables;
+use crate::tabs;
 use crate::types::{SearchData, SearchMode, SearchOutcome, UiConfig};
-use crate::utils::{build_facet_rows, build_file_rows};
 use frizbee::{Config, match_list};
 
 const PREFILTER_ENABLE_THRESHOLD: usize = 1_000;
@@ -109,7 +109,15 @@ impl<'a> App<'a> {
             .constraints([Constraint::Length(1), Constraint::Min(1)])
             .split(area);
 
-        self.render_input_with_tabs(frame, layout[0]);
+        // Delegate input + tabs rendering
+        tabs::render_input_with_tabs(
+            &self.search_input,
+            &self.input_title,
+            self.mode,
+            &self.ui,
+            frame,
+            layout[0],
+        );
         self.render_results(frame, layout[1]);
 
         // Minimal empty state
@@ -122,193 +130,53 @@ impl<'a> App<'a> {
         }
     }
 
-    fn render_input_with_tabs(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        // Calculate tabs width: " Tags " + " Files " + extra padding = about 16 chars
-        let tabs_width = 16u16;
-
-        // Get prompt for calculating textarea width
-        let prompt = self
-            .input_title
-            .as_deref()
-            .or(Some(self.data.repo_display.as_str()))
-            .unwrap_or("");
-        let prompt_width = if prompt.is_empty() {
-            0
-        } else {
-            prompt.len() as u16 + 3
-        }; // " > "
-
-        // Split area: prompt (if any), textarea, tabs on right
-        let constraints = if prompt.is_empty() {
-            vec![Constraint::Min(1), Constraint::Length(tabs_width)]
-        } else {
-            vec![
-                Constraint::Length(prompt_width),
-                Constraint::Min(1),
-                Constraint::Length(tabs_width),
-            ]
-        };
-
-        let horizontal = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(area);
-
-        // Render prompt if present
-        if !prompt.is_empty() {
-            let prompt_text = format!("{} > ", prompt);
-            let prompt_widget =
-                Paragraph::new(prompt_text).style(Style::default().fg(Color::LightCyan));
-            frame.render_widget(prompt_widget, horizontal[0]);
-
-            // Render textarea in the middle section
-            self.search_input.render_textarea(frame, horizontal[1]);
-        } else {
-            // No prompt, render textarea in first section
-            self.search_input.render_textarea(frame, horizontal[0]);
-        }
-
-        // Render tabs on the right (last section)
-        let tabs_area = horizontal[horizontal.len() - 1];
-        let selected = match self.mode {
-            SearchMode::Facets => 0,
-            SearchMode::Files => 1,
-        };
-
-        // Add extra padding to rightmost tab to prevent cutoff
-        let tab_titles = vec![
-            Line::from(format!(" {} ", "Tags"))
-                .fg(Color::Rgb(226, 232, 240))
-                .bg(if selected == 0 {
-                    Color::Rgb(15, 23, 42)
-                } else {
-                    Color::Rgb(30, 41, 59)
-                }),
-            Line::from(format!(" {} ", "Files "))
-                .fg(Color::Rgb(226, 232, 240))
-                .bg(if selected == 1 {
-                    Color::Rgb(15, 23, 42)
-                } else {
-                    Color::Rgb(30, 41, 59)
-                }),
-        ];
-
-        let tabs = Tabs::new(tab_titles)
-            .select(selected)
-            .divider("")
-            .highlight_style(Style::default().bg(Color::Rgb(15, 23, 42)));
-
-        frame.render_widget(tabs, tabs_area);
-    }
-
     fn render_results(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
         match self.mode {
-            SearchMode::Facets => self.render_facet_table(frame, area),
-            SearchMode::Files => self.render_file_view(frame, area),
+            SearchMode::Facets => {
+                let query = self.search_input.text().trim();
+                let highlight_owned = if query.is_empty() {
+                    None
+                } else {
+                    Some((query.to_string(), self.config_for_query(query)))
+                };
+                let highlight_state: Option<(&str, &Config)> =
+                    highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
+                tables::render_facet_table(
+                    frame,
+                    area,
+                    &self.filtered_facets,
+                    &self.facet_scores,
+                    &self.data.facets,
+                    &self.facet_headers,
+                    &self.facet_widths,
+                    &mut self.table_state,
+                    &self.ui,
+                    highlight_state,
+                )
+            }
+            SearchMode::Files => {
+                let query = self.search_input.text().trim();
+                let highlight_owned = if query.is_empty() {
+                    None
+                } else {
+                    Some((query.to_string(), self.config_for_query(query)))
+                };
+                let highlight_state: Option<(&str, &Config)> =
+                    highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
+                tables::render_file_view(
+                    frame,
+                    area,
+                    &self.filtered_files,
+                    &self.file_scores,
+                    &self.data.files,
+                    &self.file_headers,
+                    &self.file_widths,
+                    &mut self.table_state,
+                    &self.ui,
+                    highlight_state,
+                )
+            }
         }
-    }
-
-    fn render_facet_table(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        let query = self.search_input.text().trim();
-        let highlight_owned = if query.is_empty() {
-            None
-        } else {
-            Some((query.to_string(), self.config_for_query(query)))
-        };
-        let highlight_state: Option<(&str, &Config)> =
-            highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
-        let rows = build_facet_rows(
-            &self.filtered_facets,
-            &self.facet_scores,
-            &self.data.facets,
-            highlight_state,
-        );
-
-        let widths = self.facet_widths.clone().unwrap_or_else(|| {
-            vec![
-                Constraint::Percentage(50),
-                Constraint::Length(8),
-                Constraint::Length(8),
-            ]
-        });
-        let header_cells = self
-            .facet_headers
-            .clone()
-            .unwrap_or_else(|| vec!["Facet".into(), "Count".into(), "Score".into()])
-            .into_iter()
-            .map(Cell::from)
-            .collect::<Vec<_>>();
-        let header = Row::new(header_cells)
-            .style(
-                Style::new()
-                    .fg(Color::Rgb(226, 232, 240))
-                    .bg(Color::Rgb(15, 23, 42)),
-            ) // slate-200 on slate-900
-            .height(1)
-            .bottom_margin(1); // Add space between header and rows
-
-        let table = Table::new(rows, widths)
-            .header(header)
-            .column_spacing(1)
-            .row_highlight_style(
-                Style::new()
-                    .bg(Color::Rgb(30, 41, 59))
-                    .fg(Color::Rgb(250, 204, 21)),
-            ) // slate-800 bg, yellow-400 fg
-            .highlight_symbol("▶ ");
-        frame.render_stateful_widget(table, area, &mut self.table_state);
-    }
-
-    fn render_file_view(&mut self, frame: &mut Frame, area: ratatui::layout::Rect) {
-        // Minimal: just the table, no detail panel or scrollbar
-        let query = self.search_input.text().trim();
-        let highlight_owned = if query.is_empty() {
-            None
-        } else {
-            Some((query.to_string(), self.config_for_query(query)))
-        };
-        let highlight_state: Option<(&str, &Config)> =
-            highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
-        let rows = build_file_rows(
-            &self.filtered_files,
-            &self.file_scores,
-            &self.data.files,
-            highlight_state,
-        );
-
-        let widths = self.file_widths.clone().unwrap_or_else(|| {
-            vec![
-                Constraint::Percentage(60),
-                Constraint::Percentage(30),
-                Constraint::Length(8),
-            ]
-        });
-        let header_cells = self
-            .file_headers
-            .clone()
-            .unwrap_or_else(|| vec!["Path".into(), "Tags".into(), "Score".into()])
-            .into_iter()
-            .map(Cell::from)
-            .collect::<Vec<_>>();
-        let header = Row::new(header_cells)
-            .style(
-                Style::new()
-                    .fg(Color::Rgb(226, 232, 240))
-                    .bg(Color::Rgb(15, 23, 42)),
-            ) // slate-200 on slate-900
-            .height(1)
-            .bottom_margin(1); // Add space between header and rows
-
-        let table = Table::new(rows, widths)
-            .header(header)
-            .column_spacing(1)
-            .row_highlight_style(
-                Style::new()
-                    .bg(Color::Rgb(30, 41, 59))
-                    .fg(Color::Rgb(250, 204, 21)),
-            ) // slate-800 bg, yellow-400 fg
-            .highlight_symbol("▶ ");
-        frame.render_stateful_widget(table, area, &mut self.table_state);
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<SearchOutcome>> {
