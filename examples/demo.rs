@@ -6,66 +6,21 @@ use git_sparta::tui::{self, FacetRow, FileRow, SearchData};
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
     let facets = vec![
-        FacetRow {
-            name: "app/core".into(),
-            count: 12,
-        },
-        FacetRow {
-            name: "app/ui".into(),
-            count: 9,
-        },
-        FacetRow {
-            name: "docs".into(),
-            count: 4,
-        },
-        FacetRow {
-            name: "ops".into(),
-            count: 6,
-        },
-        FacetRow {
-            name: "tooling".into(),
-            count: 8,
-        },
-        FacetRow {
-            name: "infra".into(),
-            count: 5,
-        },
-        FacetRow {
-            name: "ci".into(),
-            count: 3,
-        },
-        FacetRow {
-            name: "tests".into(),
-            count: 7,
-        },
-        FacetRow {
-            name: "examples".into(),
-            count: 2,
-        },
-        FacetRow {
-            name: "legacy".into(),
-            count: 1,
-        },
-        FacetRow {
-            name: "frontend".into(),
-            count: 10,
-        },
-        FacetRow {
-            name: "backend".into(),
-            count: 11,
-        },
-        FacetRow {
-            name: "api".into(),
-            count: 6,
-        },
-        FacetRow {
-            name: "db".into(),
-            count: 4,
-        },
-        FacetRow {
-            name: "scripts".into(),
-            count: 3,
-        },
+        FacetRow::new("app/core", 12),
+        FacetRow::new("app/ui", 9),
+        FacetRow::new("docs", 4),
+        FacetRow::new("ops", 6),
+        FacetRow::new("tooling", 8),
+        FacetRow::new("infra", 5),
+        FacetRow::new("ci", 3),
+        FacetRow::new("tests", 7),
+        FacetRow::new("examples", 2),
+        FacetRow::new("legacy", 1),
+        FacetRow::new("frontend", 10),
+        FacetRow::new("backend", 11),
+        FacetRow::new("api", 6),
+        FacetRow::new("db", 4),
+        FacetRow::new("scripts", 3),
     ];
 
     let files = vec![
@@ -127,18 +82,13 @@ fn main() -> anyhow::Result<()> {
         FileRow::new("docs/api.md".into(), vec!["docs".into(), "api".into()]),
     ];
 
-    let data = SearchData {
-        repo_display: "demo-repo".into(),
-        user_filter: "demo".into(),
-        facets,
-        files,
-    };
+    let data = SearchData::new().with_facets(facets).with_files(files);
 
     let searcher = tui::Searcher::new(data).with_input_title("demo");
     let searcher = apply_theme(searcher, &opts);
 
     let outcome = searcher.run()?;
-    if outcome.accepted {
+    if outcome.is_accepted() {
         println!("Demo accepted – imagine emitting sparse patterns here");
     } else {
         println!("Demo aborted");

@@ -88,21 +88,17 @@ pub fn run(
     }
 
     let patterns: Vec<String> = unique_patterns.into_iter().collect();
-    let facets = tag_counts
+    let facets: Vec<_> = tag_counts
         .into_iter()
-        .map(|(name, count)| tui::FacetRow { name, count })
+        .map(|(name, count)| tui::FacetRow::new(name, count))
         .collect();
-    let files = file_map
+    let files: Vec<_> = file_map
         .into_iter()
         .map(|(path, tags)| tui::FileRow::new(path, tags.into_iter().collect()))
         .collect();
 
-    let mut searcher_builder = tui::Searcher::new(tui::SearchData {
-        repo_display: root.display().to_string(),
-        user_filter: tag.to_string(),
-        facets,
-        files,
-    });
+    let data = tui::SearchData::new().with_facets(facets).with_files(files);
+    let mut searcher_builder = tui::Searcher::new(data);
 
     searcher_builder = searcher_builder.with_ui_config(tui::UiConfig::tags_and_files());
 
@@ -115,7 +111,7 @@ pub fn run(
 
     let outcome = searcher_builder.run()?;
 
-    if !outcome.accepted {
+    if !outcome.is_accepted() {
         anyhow::bail!("aborted by user");
     }
 

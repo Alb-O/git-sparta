@@ -12,7 +12,7 @@ use crate::input::SearchInput;
 use crate::tables;
 use crate::tabs;
 use crate::theme::Theme;
-use crate::types::{SearchData, SearchMode, SearchOutcome, UiConfig};
+use crate::types::{SearchData, SearchMode, SearchOutcome, SearchSelection, UiConfig};
 use frizbee::{Config, match_list};
 
 const PREFILTER_ENABLE_THRESHOLD: usize = 1_000;
@@ -49,9 +49,14 @@ impl<'a> App<'a> {
             prefilter: false,
             ..Config::default()
         };
+        let start_mode = if data.facets().is_empty() {
+            SearchMode::Files
+        } else {
+            SearchMode::Facets
+        };
         let mut app = Self {
             data,
-            mode: SearchMode::Facets,
+            mode: start_mode,
             search_input: SearchInput::default(),
             table_state,
             filtered_facets: Vec::new(),
@@ -158,7 +163,7 @@ impl<'a> App<'a> {
                     tables::TablePane::Facets {
                         filtered: &self.filtered_facets,
                         scores: &self.facet_scores,
-                        facets: &self.data.facets,
+                        facets: self.data.facets(),
                         headers: self.facet_headers.as_ref(),
                         widths: self.facet_widths.as_ref(),
                     },
@@ -183,7 +188,7 @@ impl<'a> App<'a> {
                     tables::TablePane::Files {
                         filtered: &self.filtered_files,
                         scores: &self.file_scores,
-                        files: &self.data.files,
+                        files: self.data.files(),
                         headers: self.file_headers.as_ref(),
                         widths: self.file_widths.as_ref(),
                     },
@@ -196,10 +201,11 @@ impl<'a> App<'a> {
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<SearchOutcome>> {
         match key.code {
             KeyCode::Esc => {
-                return Ok(Some(SearchOutcome { accepted: false }));
+                return Ok(Some(SearchOutcome::cancelled()));
             }
             KeyCode::Enter => {
-                return Ok(Some(SearchOutcome { accepted: true }));
+                let selection = self.current_selection();
+                return Ok(Some(SearchOutcome::accepted(selection)));
             }
             KeyCode::Tab => {
                 self.switch_mode();
@@ -273,17 +279,17 @@ impl<'a> App<'a> {
     pub(crate) fn refresh_facets(&mut self) {
         let query = self.search_input.text().trim();
         if query.is_empty() {
-            self.filtered_facets = (0..self.data.facets.len()).collect();
-            self.facet_scores = vec![0; self.data.facets.len()];
+            self.filtered_facets = (0..self.data.facets().len()).collect();
+            self.facet_scores = vec![0; self.data.facets().len()];
             self.filtered_facets
-                .sort_by(|&a, &b| self.data.facets[a].name.cmp(&self.data.facets[b].name));
+                .sort_by(|&a, &b| self.data.facets()[a].name.cmp(&self.data.facets()[b].name));
             return;
         }
 
         let config = self.config_for_query(query);
         let haystacks: Vec<&str> = self
             .data
-            .facets
+            .facets()
             .iter()
             .map(|facet| facet.name.as_str())
             .collect();
@@ -302,17 +308,17 @@ impl<'a> App<'a> {
     pub(crate) fn refresh_files(&mut self) {
         let query = self.search_input.text().trim();
         if query.is_empty() {
-            self.filtered_files = (0..self.data.files.len()).collect();
-            self.file_scores = vec![0; self.data.files.len()];
+            self.filtered_files = (0..self.data.files().len()).collect();
+            self.file_scores = vec![0; self.data.files().len()];
             self.filtered_files
-                .sort_by(|&a, &b| self.data.files[a].path.cmp(&self.data.files[b].path));
+                .sort_by(|&a, &b| self.data.files()[a].path.cmp(&self.data.files()[b].path));
             return;
         }
 
         let config = self.config_for_query(query);
         let haystacks: Vec<&str> = self
             .data
-            .files
+            .files()
             .iter()
             .map(|file| file.search_text())
             .collect();
@@ -345,8 +351,8 @@ impl<'a> App<'a> {
         }
 
         let dataset_len = match self.mode {
-            SearchMode::Files => self.data.files.len(),
-            SearchMode::Facets => self.data.facets.len(),
+            SearchMode::Files => self.data.files().len(),
+            SearchMode::Facets => self.data.facets().len(),
         };
 
         if dataset_len >= PREFILTER_ENABLE_THRESHOLD {
@@ -358,5 +364,27 @@ impl<'a> App<'a> {
         }
 
         config
+    }
+
+    fn current_selection(&self) -> Option<SearchSelection> {
+        let selected = self.table_state.selected()?;
+        match self.mode {
+            SearchMode::Facets => {
+                let actual = *self.filtered_facets.get(selected)?;
+                self.data
+                    .facets()
+                    .get(actual)
+                    .cloned()
+                    .map(SearchSelection::Facet)
+            }
+            SearchMode::Files => {
+                let actual = *self.filtered_files.get(selected)?;
+                self.data
+                    .files()
+                    .get(actual)
+                    .cloned()
+                    .map(SearchSelection::File)
+            }
+        }
     }
 }

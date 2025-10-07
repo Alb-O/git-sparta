@@ -6,62 +6,20 @@ use git_sparta::tui::{self, FacetRow, FileRow, SearchData};
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
     let facets = vec![
-        FacetRow {
-            name: "backend".into(),
-            count: 7,
-        },
-        FacetRow {
-            name: "frontend".into(),
-            count: 5,
-        },
-        FacetRow {
-            name: "integration".into(),
-            count: 3,
-        },
-        FacetRow {
-            name: "mobile".into(),
-            count: 4,
-        },
-        FacetRow {
-            name: "qa".into(),
-            count: 2,
-        },
-        FacetRow {
-            name: "devops".into(),
-            count: 6,
-        },
-        FacetRow {
-            name: "docs".into(),
-            count: 3,
-        },
-        FacetRow {
-            name: "security".into(),
-            count: 2,
-        },
-        FacetRow {
-            name: "infra".into(),
-            count: 4,
-        },
-        FacetRow {
-            name: "legacy".into(),
-            count: 1,
-        },
-        FacetRow {
-            name: "api".into(),
-            count: 5,
-        },
-        FacetRow {
-            name: "db".into(),
-            count: 3,
-        },
-        FacetRow {
-            name: "tests".into(),
-            count: 4,
-        },
-        FacetRow {
-            name: "scripts".into(),
-            count: 2,
-        },
+        FacetRow::new("backend", 7),
+        FacetRow::new("frontend", 5),
+        FacetRow::new("integration", 3),
+        FacetRow::new("mobile", 4),
+        FacetRow::new("qa", 2),
+        FacetRow::new("devops", 6),
+        FacetRow::new("docs", 3),
+        FacetRow::new("security", 2),
+        FacetRow::new("infra", 4),
+        FacetRow::new("legacy", 1),
+        FacetRow::new("api", 5),
+        FacetRow::new("db", 3),
+        FacetRow::new("tests", 4),
+        FacetRow::new("scripts", 2),
     ];
 
     let files = vec![
@@ -123,18 +81,13 @@ fn main() -> anyhow::Result<()> {
         ),
     ];
 
-    let data = SearchData {
-        repo_display: "workspace-prototype".into(),
-        user_filter: "workspace".into(),
-        facets,
-        files,
-    };
+    let data = SearchData::new().with_facets(facets).with_files(files);
 
     let searcher = tui::Searcher::new(data).with_input_title("workspace");
     let searcher = apply_theme(searcher, &opts);
 
     let outcome = searcher.run()?;
-    if outcome.accepted {
+    if outcome.is_accepted() {
         println!("Workspace walkthrough accepted");
     } else {
         println!("Workspace walkthrough cancelled");

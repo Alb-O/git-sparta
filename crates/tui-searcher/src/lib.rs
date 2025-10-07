@@ -9,7 +9,12 @@ pub mod utils;
 pub use app::run;
 pub use input::SearchInput;
 pub use theme::{LIGHT, SLATE, SOLARIZED, Theme};
-pub use types::{FacetRow, FileRow, PaneUiConfig, SearchData, SearchMode, UiConfig};
+pub use types::{
+    FacetRow, FileRow, PaneUiConfig, SearchData, SearchMode, SearchOutcome, SearchSelection,
+    UiConfig,
+};
+
+use std::path::Path;
 
 use ratatui::layout::Constraint;
 
@@ -40,6 +45,16 @@ impl Searcher {
             ui_config: None,
             theme: None,
         }
+    }
+
+    /// Create a Searcher populated with every file under the provided root.
+    pub fn filesystem(root: impl AsRef<Path>) -> anyhow::Result<Self> {
+        SearchData::filesystem(root).map(Self::new)
+    }
+
+    /// Convenience for searching the current working directory recursively.
+    pub fn filesystem_current_dir() -> anyhow::Result<Self> {
+        SearchData::filesystem_current_dir().map(Self::new)
     }
 
     pub fn with_input_title(mut self, title: impl Into<String>) -> Self {

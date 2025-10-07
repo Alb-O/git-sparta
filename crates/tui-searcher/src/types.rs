@@ -1,12 +1,26 @@
+use std::mem;
+use std::path::{Path, PathBuf};
+
+use anyhow::Result;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::Cell;
-use std::mem;
+use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
 pub struct FacetRow {
     pub name: String,
     pub count: usize,
+}
+
+impl FacetRow {
+    #[must_use]
+    pub fn new(name: impl Into<String>, count: usize) -> Self {
+        Self {
+            name: name.into(),
+            count,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +48,11 @@ impl FileRow {
             display_tags,
             search_text,
         }
+    }
+
+    #[must_use]
+    pub fn from_path(path: impl Into<String>) -> Self {
+        Self::new(path.into(), Vec::new())
     }
 
     /// Return the search_text (path plus display tags) used by the UI matcher.
@@ -154,15 +173,149 @@ impl SearchMode {
     }
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct SearchData {
-    pub repo_display: String,
-    pub user_filter: String,
-    pub facets: Vec<FacetRow>,
-    pub files: Vec<FileRow>,
+    pub(crate) facets: Vec<FacetRow>,
+    pub(crate) files: Vec<FileRow>,
 }
 
+impl SearchData {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn with_facets(mut self, facets: impl IntoIterator<Item = FacetRow>) -> Self {
+        self.facets = facets.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub fn with_files(mut self, files: impl IntoIterator<Item = FileRow>) -> Self {
+        self.files = files.into_iter().collect();
+        self
+    }
+
+    pub fn push_facet(&mut self, facet: FacetRow) {
+        self.facets.push(facet);
+    }
+
+    pub fn push_file(&mut self, file: FileRow) {
+        self.files.push(file);
+    }
+
+    #[must_use]
+    pub fn facets(&self) -> &[FacetRow] {
+        &self.facets
+    }
+
+    #[must_use]
+    pub fn files(&self) -> &[FileRow] {
+        &self.files
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.facets.is_empty() && self.files.is_empty()
+    }
+
+    pub fn filesystem(root: impl AsRef<Path>) -> Result<Self> {
+        let root = root.as_ref();
+        let mut files = Vec::new();
+
+        for entry in WalkDir::new(root) {
+            let entry = entry?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            let mut display: PathBuf = if let Ok(relative) = entry.path().strip_prefix(root) {
+                relative.to_path_buf()
+            } else {
+                entry.path().to_path_buf()
+            };
+            if display.as_os_str().is_empty() {
+                if let Some(file_name) = entry.path().file_name() {
+                    display = PathBuf::from(file_name);
+                }
+            }
+            let display = display.to_string_lossy().replace("\\", "/");
+            files.push(FileRow::from_path(display));
+        }
+
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+
+        Ok(Self::default().with_files(files))
+    }
+
+    pub fn filesystem_current_dir() -> Result<Self> {
+        let cwd = std::env::current_dir()?;
+        Self::filesystem(cwd)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum SearchSelection {
+    Facet(FacetRow),
+    File(FileRow),
+}
+
+impl SearchSelection {
+    #[must_use]
+    pub fn as_facet(&self) -> Option<&FacetRow> {
+        match self {
+            SearchSelection::Facet(facet) => Some(facet),
+            SearchSelection::File(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub fn as_file(&self) -> Option<&FileRow> {
+        match self {
+            SearchSelection::Facet(_) => None,
+            SearchSelection::File(file) => Some(file),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SearchOutcome {
-    pub accepted: bool,
+    accepted: bool,
+    selection: Option<SearchSelection>,
+}
+
+impl SearchOutcome {
+    #[must_use]
+    pub fn accepted(selection: Option<SearchSelection>) -> Self {
+        Self {
+            accepted: true,
+            selection,
+        }
+    }
+
+    #[must_use]
+    pub fn cancelled() -> Self {
+        Self {
+            accepted: false,
+            selection: None,
+        }
+    }
+
+    #[must_use]
+    pub fn is_accepted(&self) -> bool {
+        self.accepted
+    }
+
+    #[must_use]
+    pub fn selection(&self) -> Option<&SearchSelection> {
+        self.selection.as_ref()
+    }
+
+    #[must_use]
+    pub fn into_selection(self) -> Option<SearchSelection> {
+        self.selection
+    }
 }
 
 pub(crate) fn highlight_cell(text: &str, indices: Option<Vec<usize>>) -> Cell<'_> {
