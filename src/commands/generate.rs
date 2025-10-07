@@ -90,21 +90,21 @@ pub fn run(
     let patterns: Vec<String> = unique_patterns.into_iter().collect();
     let facets = tag_counts
         .into_iter()
-        .map(|(name, count)| tui::FacetRow { name, count })
+        .map(|(name, count)| tui::FacetRow::new(name, count))
         .collect();
     let files = file_map
         .into_iter()
-        .map(|(path, tags)| tui::FileRow::new(path, tags.into_iter().collect()))
+        .map(|(path, tags)| tui::FileRow::new(path, tags.into_iter()))
         .collect();
 
-    let mut searcher_builder = tui::Searcher::new(tui::SearchData {
-        repo_display: root.display().to_string(),
-        user_filter: tag.to_string(),
-        facets,
-        files,
-    });
+    let data = tui::SearchData::new()
+        .with_context(root.display().to_string())
+        .with_initial_query(tag)
+        .with_facets(facets)
+        .with_files(files);
 
-    searcher_builder = searcher_builder.with_ui_config(tui::UiConfig::tags_and_files());
+    let mut searcher_builder =
+        tui::Searcher::new(data).with_ui_config(tui::UiConfig::tags_and_files());
 
     if let Some(name) = theme {
         // Use centralized theme lookup from the tui crate; with_theme_name is

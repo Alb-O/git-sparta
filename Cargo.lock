@@ -2330,6 +2330,7 @@ dependencies = [
  "frizbee",
  "ratatui",
  "tui-textarea",
+ "walkdir",
 ]
 
 [[package]]

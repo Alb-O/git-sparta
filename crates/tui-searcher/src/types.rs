@@ -1,12 +1,26 @@
+use anyhow::{Context, Result};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::Cell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::mem;
+use std::path::{Component, Path};
+use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
 pub struct FacetRow {
     pub name: String,
     pub count: usize,
+}
+
+impl FacetRow {
+    #[must_use]
+    pub fn new(name: impl Into<String>, count: usize) -> Self {
+        Self {
+            name: name.into(),
+            count,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -19,8 +33,13 @@ pub struct FileRow {
 
 impl FileRow {
     #[must_use]
-    pub fn new(path: String, tags: Vec<String>) -> Self {
-        let mut tags_sorted = tags;
+    pub fn new<I, S>(path: impl Into<String>, tags: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let path = path.into();
+        let mut tags_sorted: Vec<String> = tags.into_iter().map(Into::into).collect();
         tags_sorted.sort();
         let display_tags = tags_sorted.join(", ");
         let search_text = if display_tags.is_empty() {
@@ -155,14 +174,139 @@ impl SearchMode {
 }
 
 pub struct SearchData {
-    pub repo_display: String,
-    pub user_filter: String,
+    pub context_label: Option<String>,
+    pub initial_query: String,
     pub facets: Vec<FacetRow>,
     pub files: Vec<FileRow>,
 }
 
+impl Default for SearchData {
+    fn default() -> Self {
+        Self {
+            context_label: None,
+            initial_query: String::new(),
+            facets: Vec::new(),
+            files: Vec::new(),
+        }
+    }
+}
+
+impl SearchData {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn with_context(mut self, label: impl Into<String>) -> Self {
+        self.context_label = Some(label.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_initial_query(mut self, query: impl Into<String>) -> Self {
+        self.initial_query = query.into();
+        self
+    }
+
+    #[must_use]
+    pub fn with_facets(mut self, facets: Vec<FacetRow>) -> Self {
+        self.facets = facets;
+        self
+    }
+
+    #[must_use]
+    pub fn with_files(mut self, files: Vec<FileRow>) -> Self {
+        self.files = files;
+        self
+    }
+
+    pub fn from_filesystem(root: impl AsRef<Path>) -> Result<Self> {
+        let root = root.as_ref();
+        let mut files = Vec::new();
+        let mut facet_counts: BTreeMap<String, usize> = BTreeMap::new();
+
+        for entry in WalkDir::new(root).into_iter() {
+            let entry = entry.with_context(|| format!("failed to walk {}", root.display()))?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            let path = entry.path();
+            let relative = path.strip_prefix(root).unwrap_or(path);
+            let mut tags: BTreeSet<String> = BTreeSet::new();
+
+            if let Some(parent) = relative.parent() {
+                for component in parent.components() {
+                    if let Component::Normal(part) = component {
+                        let value = part.to_string_lossy().to_string();
+                        if !value.is_empty() {
+                            tags.insert(value);
+                        }
+                    }
+                }
+            }
+
+            if let Some(ext) = relative.extension().and_then(|ext| ext.to_str()) {
+                if !ext.is_empty() {
+                    tags.insert(format!("*.{ext}"));
+                }
+            }
+
+            let tags_vec: Vec<String> = tags.into_iter().collect();
+            for tag in &tags_vec {
+                *facet_counts.entry(tag.clone()).or_default() += 1;
+            }
+
+            let relative_display = relative.to_string_lossy().replace("\\", "/");
+            files.push(FileRow::new(relative_display, tags_vec));
+        }
+
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+
+        let facets = facet_counts
+            .into_iter()
+            .map(|(name, count)| FacetRow::new(name, count))
+            .collect();
+
+        Ok(Self {
+            context_label: Some(root.display().to_string()),
+            initial_query: String::new(),
+            facets,
+            files,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SearchOutcome {
     pub accepted: bool,
+    pub selection: Option<SearchSelection>,
+    pub query: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum SearchSelection {
+    Facet(FacetRow),
+    File(FileRow),
+}
+
+impl SearchOutcome {
+    #[must_use]
+    pub fn selected_file(&self) -> Option<&FileRow> {
+        match self.selection {
+            Some(SearchSelection::File(ref file)) => Some(file),
+            _ => None,
+        }
+    }
+
+    #[must_use]
+    pub fn selected_facet(&self) -> Option<&FacetRow> {
+        match self.selection {
+            Some(SearchSelection::Facet(ref facet)) => Some(facet),
+            _ => None,
+        }
+    }
 }
 
 pub(crate) fn highlight_cell(text: &str, indices: Option<Vec<usize>>) -> Cell<'_> {
