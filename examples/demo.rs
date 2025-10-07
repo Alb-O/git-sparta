@@ -1,147 +1,78 @@
 mod common;
 use clap::Parser;
 use common::{Opts, apply_theme};
-use git_sparta::tui::{self, FacetRow, FileRow, SearchData};
+use git_sparta::tui::{self, FacetRow, FileRow, SearchData, SearchSelection};
 
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
-    let facets = vec![
-        FacetRow {
-            name: "app/core".into(),
-            count: 12,
-        },
-        FacetRow {
-            name: "app/ui".into(),
-            count: 9,
-        },
-        FacetRow {
-            name: "docs".into(),
-            count: 4,
-        },
-        FacetRow {
-            name: "ops".into(),
-            count: 6,
-        },
-        FacetRow {
-            name: "tooling".into(),
-            count: 8,
-        },
-        FacetRow {
-            name: "infra".into(),
-            count: 5,
-        },
-        FacetRow {
-            name: "ci".into(),
-            count: 3,
-        },
-        FacetRow {
-            name: "tests".into(),
-            count: 7,
-        },
-        FacetRow {
-            name: "examples".into(),
-            count: 2,
-        },
-        FacetRow {
-            name: "legacy".into(),
-            count: 1,
-        },
-        FacetRow {
-            name: "frontend".into(),
-            count: 10,
-        },
-        FacetRow {
-            name: "backend".into(),
-            count: 11,
-        },
-        FacetRow {
-            name: "api".into(),
-            count: 6,
-        },
-        FacetRow {
-            name: "db".into(),
-            count: 4,
-        },
-        FacetRow {
-            name: "scripts".into(),
-            count: 3,
-        },
+
+    let facets: Vec<FacetRow> = [
+        ("app/core", 12),
+        ("app/ui", 9),
+        ("docs", 4),
+        ("ops", 6),
+        ("tooling", 8),
+        ("infra", 5),
+        ("ci", 3),
+        ("tests", 7),
+        ("examples", 2),
+        ("legacy", 1),
+        ("frontend", 10),
+        ("backend", 11),
+        ("api", 6),
+        ("db", 4),
+        ("scripts", 3),
+    ]
+    .into_iter()
+    .map(|(name, count)| FacetRow::new(name, count))
+    .collect();
+
+    let files: Vec<FileRow> = vec![
+        FileRow::new("src/main.rs", ["app/core", "app/ui"]),
+        FileRow::new("src/ui/search.rs", ["app/ui", "tooling"]),
+        FileRow::new("docs/overview.md", ["docs"]),
+        FileRow::new("ops/terraform/main.tf", ["ops", "tooling"]),
+        FileRow::new("tooling/dev-env.nix", ["tooling"]),
+        FileRow::new("infra/docker-compose.yml", ["infra"]),
+        FileRow::new("ci/build.yml", ["ci"]),
+        FileRow::new("tests/test_main.rs", ["tests", "app/core"]),
+        FileRow::new("examples/demo.rs", ["examples", "app/ui"]),
+        FileRow::new("legacy/old_code.rs", ["legacy"]),
+        FileRow::new("frontend/app.jsx", ["frontend", "app/ui"]),
+        FileRow::new("backend/service.rs", ["backend", "app/core"]),
+        FileRow::new("api/routes.rs", ["api", "backend"]),
+        FileRow::new("db/schema.sql", ["db"]),
+        FileRow::new("scripts/deploy.sh", ["scripts", "infra"]),
+        FileRow::new("src/utils/helpers.rs", ["app/core", "tooling"]),
+        FileRow::new("src/ui/components/button.rs", ["app/ui", "frontend"]),
+        FileRow::new("ops/ansible/playbook.yml", ["ops", "infra"]),
+        FileRow::new("tooling/lint.nix", ["tooling", "ci"]),
+        FileRow::new("docs/api.md", ["docs", "api"]),
     ];
 
-    let files = vec![
-        FileRow::new(
-            "src/main.rs".into(),
-            vec!["app/core".into(), "app/ui".into()],
-        ),
-        FileRow::new(
-            "src/ui/search.rs".into(),
-            vec!["app/ui".into(), "tooling".into()],
-        ),
-        FileRow::new("docs/overview.md".into(), vec!["docs".into()]),
-        FileRow::new(
-            "ops/terraform/main.tf".into(),
-            vec!["ops".into(), "tooling".into()],
-        ),
-        FileRow::new("tooling/dev-env.nix".into(), vec!["tooling".into()]),
-        FileRow::new("infra/docker-compose.yml".into(), vec!["infra".into()]),
-        FileRow::new("ci/build.yml".into(), vec!["ci".into()]),
-        FileRow::new(
-            "tests/test_main.rs".into(),
-            vec!["tests".into(), "app/core".into()],
-        ),
-        FileRow::new(
-            "examples/demo.rs".into(),
-            vec!["examples".into(), "app/ui".into()],
-        ),
-        FileRow::new("legacy/old_code.rs".into(), vec!["legacy".into()]),
-        FileRow::new(
-            "frontend/app.jsx".into(),
-            vec!["frontend".into(), "app/ui".into()],
-        ),
-        FileRow::new(
-            "backend/service.rs".into(),
-            vec!["backend".into(), "app/core".into()],
-        ),
-        FileRow::new("api/routes.rs".into(), vec!["api".into(), "backend".into()]),
-        FileRow::new("db/schema.sql".into(), vec!["db".into()]),
-        FileRow::new(
-            "scripts/deploy.sh".into(),
-            vec!["scripts".into(), "infra".into()],
-        ),
-        FileRow::new(
-            "src/utils/helpers.rs".into(),
-            vec!["app/core".into(), "tooling".into()],
-        ),
-        FileRow::new(
-            "src/ui/components/button.rs".into(),
-            vec!["app/ui".into(), "frontend".into()],
-        ),
-        FileRow::new(
-            "ops/ansible/playbook.yml".into(),
-            vec!["ops".into(), "infra".into()],
-        ),
-        FileRow::new(
-            "tooling/lint.nix".into(),
-            vec!["tooling".into(), "ci".into()],
-        ),
-        FileRow::new("docs/api.md".into(), vec!["docs".into(), "api".into()]),
-    ];
+    let data = SearchData::new()
+        .with_context("demo-repo")
+        .with_initial_query("demo")
+        .with_facets(facets)
+        .with_files(files);
 
-    let data = SearchData {
-        repo_display: "demo-repo".into(),
-        user_filter: "demo".into(),
-        facets,
-        files,
-    };
-
-    let searcher = tui::Searcher::new(data).with_input_title("demo");
+    let searcher = tui::Searcher::new(data)
+        .with_ui_config(tui::UiConfig::tags_and_files())
+        .with_input_title("demo");
     let searcher = apply_theme(searcher, &opts);
 
     let outcome = searcher.run()?;
-    if outcome.accepted {
-        println!("Demo accepted – imagine emitting sparse patterns here");
-    } else {
-        println!("Demo aborted");
+    if !outcome.accepted {
+        println!("Demo aborted (query: {})", outcome.query);
+        return Ok(());
+    }
+
+    match outcome.selection {
+        Some(SearchSelection::Facet(facet)) => {
+            println!("Selected facet: {}", facet.name)
+        }
+        Some(SearchSelection::File(file)) => println!("Selected file: {}", file.path),
+        None => println!("Demo accepted – imagine emitting sparse patterns here"),
     }
 
     Ok(())
