@@ -31,7 +31,7 @@ pub struct App<'a> {
     pub facet_scores: Vec<u16>,
     pub file_scores: Vec<u16>,
     pub matcher_config: Config,
-    // Customization points for the fzf-like API
+    // Customization points for the API
     pub(crate) input_title: Option<String>,
     pub(crate) facet_headers: Option<Vec<String>>,
     pub(crate) file_headers: Option<Vec<String>>,
@@ -141,17 +141,19 @@ impl<'a> App<'a> {
                 };
                 let highlight_state: Option<(&str, &Config)> =
                     highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
-                tables::render_facet_table(
+                tables::render_table(
                     frame,
                     area,
-                    &self.filtered_facets,
-                    &self.facet_scores,
-                    &self.data.facets,
-                    &self.facet_headers,
-                    &self.facet_widths,
                     &mut self.table_state,
                     &self.ui,
                     highlight_state,
+                    tables::TablePane::Facets {
+                        filtered: &self.filtered_facets,
+                        scores: &self.facet_scores,
+                        facets: &self.data.facets,
+                        headers: self.facet_headers.as_ref(),
+                        widths: self.facet_widths.as_ref(),
+                    },
                 )
             }
             SearchMode::Files => {
@@ -163,17 +165,19 @@ impl<'a> App<'a> {
                 };
                 let highlight_state: Option<(&str, &Config)> =
                     highlight_owned.as_ref().map(|(s, c)| (s.as_str(), c));
-                tables::render_file_view(
+                tables::render_table(
                     frame,
                     area,
-                    &self.filtered_files,
-                    &self.file_scores,
-                    &self.data.files,
-                    &self.file_headers,
-                    &self.file_widths,
                     &mut self.table_state,
                     &self.ui,
                     highlight_state,
+                    tables::TablePane::Files {
+                        filtered: &self.filtered_files,
+                        scores: &self.file_scores,
+                        files: &self.data.files,
+                        headers: self.file_headers.as_ref(),
+                        widths: self.file_widths.as_ref(),
+                    },
                 )
             }
         }

@@ -125,28 +125,28 @@ pub enum SearchMode {
 }
 
 impl SearchMode {
-    pub fn title<'a>(self, ui: &'a UiConfig) -> &'a str {
+    pub fn title(self, ui: &UiConfig) -> &str {
         match self {
             SearchMode::Facets => ui.facets.mode_title.as_str(),
             SearchMode::Files => ui.files.mode_title.as_str(),
         }
     }
 
-    pub fn hint<'a>(self, ui: &'a UiConfig) -> &'a str {
+    pub fn hint(self, ui: &UiConfig) -> &str {
         match self {
             SearchMode::Facets => ui.facets.hint.as_str(),
             SearchMode::Files => ui.files.hint.as_str(),
         }
     }
 
-    pub fn table_title<'a>(self, ui: &'a UiConfig) -> &'a str {
+    pub fn table_title(self, ui: &UiConfig) -> &str {
         match self {
             SearchMode::Facets => ui.facets.table_title.as_str(),
             SearchMode::Files => ui.files.table_title.as_str(),
         }
     }
 
-    pub fn count_label<'a>(self, ui: &'a UiConfig) -> &'a str {
+    pub fn count_label(self, ui: &UiConfig) -> &str {
         match self {
             SearchMode::Facets => ui.facets.count_label.as_str(),
             SearchMode::Files => ui.files.count_label.as_str(),
