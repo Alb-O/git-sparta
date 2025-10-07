@@ -1,7 +1,7 @@
 use frizbee::Config;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Cell, Paragraph, Row, Table};
 
@@ -35,6 +35,7 @@ pub fn render_table(
     _ui: &UiConfig,
     highlight_state: Option<(&str, &Config)>,
     pane: TablePane<'_>,
+    theme: &crate::theme::Theme,
 ) {
     match pane {
         TablePane::Facets {
@@ -59,22 +60,14 @@ pub fn render_table(
                 .map(Cell::from)
                 .collect::<Vec<_>>();
             let header = Row::new(header_cells)
-                .style(
-                    Style::new()
-                        .fg(Color::Rgb(226, 232, 240))
-                        .bg(Color::Rgb(15, 23, 42)),
-                )
+                .style(theme.header_style())
                 .height(1)
                 .bottom_margin(1);
 
             let table = Table::new(rows, widths_owned)
                 .header(header)
                 .column_spacing(1)
-                .row_highlight_style(
-                    Style::new()
-                        .bg(Color::Rgb(30, 41, 59))
-                        .fg(Color::Rgb(250, 204, 21)),
-                )
+                .row_highlight_style(theme.row_highlight_style())
                 .highlight_symbol("▶ ");
             frame.render_stateful_widget(table, area, table_state);
 
@@ -90,8 +83,7 @@ pub fn render_table(
                         // nothing to draw
                     } else if width <= 2 {
                         let line = " ".repeat(width);
-                        let para =
-                            Paragraph::new(line).style(Style::new().bg(Color::Rgb(15, 23, 42)));
+                        let para = Paragraph::new(line).style(Style::new().bg(theme.header_bg));
                         let sep_rect = Rect {
                             x: area.x,
                             y: sep_y,
@@ -102,14 +94,12 @@ pub fn render_table(
                     } else {
                         let middle = "─".repeat(width - 2);
                         let spans = vec![
-                            Span::styled(" ", Style::new().bg(Color::Rgb(15, 23, 42))),
+                            Span::styled(" ", Style::new().bg(theme.header_bg)),
                             Span::styled(
                                 &middle,
-                                Style::new()
-                                    .bg(Color::Rgb(15, 23, 42))
-                                    .fg(Color::Rgb(226, 232, 240)),
+                                Style::new().bg(theme.header_bg).fg(theme.header_fg),
                             ),
-                            Span::styled(" ", Style::new().bg(Color::Rgb(15, 23, 42))),
+                            Span::styled(" ", Style::new().bg(theme.header_bg)),
                         ];
                         let para = Paragraph::new(Text::from(Line::from(spans)));
                         let sep_rect = Rect {
@@ -145,22 +135,14 @@ pub fn render_table(
                 .map(Cell::from)
                 .collect::<Vec<_>>();
             let header = Row::new(header_cells)
-                .style(
-                    Style::new()
-                        .fg(Color::Rgb(226, 232, 240))
-                        .bg(Color::Rgb(15, 23, 42)),
-                )
+                .style(theme.header_style())
                 .height(1)
                 .bottom_margin(1);
 
             let table = Table::new(rows, widths_owned)
                 .header(header)
                 .column_spacing(1)
-                .row_highlight_style(
-                    Style::new()
-                        .bg(Color::Rgb(30, 41, 59))
-                        .fg(Color::Rgb(250, 204, 21)),
-                )
+                .row_highlight_style(theme.row_highlight_style())
                 .highlight_symbol("▶ ");
             frame.render_stateful_widget(table, area, table_state);
 
@@ -173,8 +155,7 @@ pub fn render_table(
                         // nothing
                     } else if width <= 2 {
                         let line = " ".repeat(width);
-                        let para =
-                            Paragraph::new(line).style(Style::new().bg(Color::Rgb(15, 23, 42)));
+                        let para = Paragraph::new(line).style(Style::new().bg(theme.header_bg));
                         let sep_rect = Rect {
                             x: area.x,
                             y: sep_y,
@@ -185,14 +166,12 @@ pub fn render_table(
                     } else {
                         let middle = "─".repeat(width - 2);
                         let spans = vec![
-                            Span::styled(" ", Style::new().bg(Color::Rgb(15, 23, 42))),
+                            Span::styled(" ", Style::new().bg(theme.header_bg)),
                             Span::styled(
                                 &middle,
-                                Style::new()
-                                    .bg(Color::Rgb(15, 23, 42))
-                                    .fg(Color::Rgb(226, 232, 240)),
+                                Style::new().bg(theme.header_bg).fg(theme.header_fg),
                             ),
-                            Span::styled(" ", Style::new().bg(Color::Rgb(15, 23, 42))),
+                            Span::styled(" ", Style::new().bg(theme.header_bg)),
                         ];
                         let para = Paragraph::new(Text::from(Line::from(spans)));
                         let sep_rect = Rect {

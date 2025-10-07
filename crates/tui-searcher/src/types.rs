@@ -1,4 +1,4 @@
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::Cell;
 use std::mem;
@@ -174,7 +174,10 @@ pub(crate) fn highlight_cell(text: &str, indices: Option<Vec<usize>>) -> Cell<'_
     let mut buffer = String::new();
     let mut highlighted = false;
     let mut spans = Vec::new();
-    let highlight_style = Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+    let theme = crate::theme::Theme::default();
+    let highlight_style = Style::new()
+        .fg(theme.highlight_fg)
+        .add_modifier(Modifier::BOLD);
 
     for (idx, ch) in text.chars().enumerate() {
         let should_highlight = next.peek().copied() == Some(idx);

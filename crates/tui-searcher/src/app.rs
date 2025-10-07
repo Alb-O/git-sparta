@@ -5,13 +5,13 @@ use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
-    style::{Color, Style},
     widgets::{Clear, Paragraph, TableState},
 };
 
 use crate::input::SearchInput;
 use crate::tables;
 use crate::tabs;
+use crate::theme::Theme;
 use crate::types::{SearchData, SearchMode, SearchOutcome, UiConfig};
 use frizbee::{Config, match_list};
 
@@ -38,6 +38,7 @@ pub struct App<'a> {
     pub(crate) facet_widths: Option<Vec<Constraint>>,
     pub(crate) file_widths: Option<Vec<Constraint>>,
     pub(crate) ui: UiConfig,
+    pub theme: crate::theme::Theme,
 }
 
 impl<'a> App<'a> {
@@ -64,9 +65,15 @@ impl<'a> App<'a> {
             facet_widths: None,
             file_widths: None,
             ui: UiConfig::default(),
+            theme: Theme::default(),
         };
         app.refresh();
         app
+    }
+
+    /// Set the active theme for the app.
+    pub fn set_theme(&mut self, theme: Theme) {
+        self.theme = theme;
     }
 
     /// Run the interactive application. This is a method so callers can
@@ -117,6 +124,7 @@ impl<'a> App<'a> {
             &self.ui,
             frame,
             layout[0],
+            &self.theme,
         );
         self.render_results(frame, layout[1]);
 
@@ -124,7 +132,7 @@ impl<'a> App<'a> {
         if self.filtered_len() == 0 {
             let empty = Paragraph::new("No results")
                 .alignment(Alignment::Center)
-                .style(Style::default().fg(Color::DarkGray));
+                .style(Theme::default().empty_style());
             frame.render_widget(Clear, layout[1]);
             frame.render_widget(empty, layout[1]);
         }
@@ -154,6 +162,7 @@ impl<'a> App<'a> {
                         headers: self.facet_headers.as_ref(),
                         widths: self.facet_widths.as_ref(),
                     },
+                    &self.theme,
                 )
             }
             SearchMode::Files => {
@@ -178,6 +187,7 @@ impl<'a> App<'a> {
                         headers: self.file_headers.as_ref(),
                         widths: self.file_widths.as_ref(),
                     },
+                    &self.theme,
                 )
             }
         }

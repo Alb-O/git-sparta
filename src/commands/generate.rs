@@ -5,7 +5,12 @@ use gix::bstr::ByteSlice;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
+pub fn run(
+    tag: &str,
+    auto_yes: bool,
+    repo_dir: Option<&Path>,
+    theme: Option<String>,
+) -> Result<()> {
     let (repo, root) = git::open_repository(repo_dir)?;
     let worktree = git::require_worktree(&repo)?;
     let mut attr_stack = worktree
@@ -92,14 +97,23 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
         .map(|(path, tags)| tui::FileRow::new(path, tags.into_iter().collect()))
         .collect();
 
-    let outcome = tui::Searcher::new(tui::SearchData {
+    let mut searcher_builder = tui::Searcher::new(tui::SearchData {
         repo_display: root.display().to_string(),
         user_filter: tag.to_string(),
         facets,
         files,
-    })
-    .with_ui_config(tui::UiConfig::tags_and_files())
-    .run()?;
+    });
+
+    searcher_builder = searcher_builder.with_ui_config(tui::UiConfig::tags_and_files());
+
+    if let Some(name) = theme {
+        // Use centralized theme lookup from the tui crate; with_theme_name is
+        // forgiving (it silently ignores unknown names), but the clap parser
+        // will already have validated values when supplied via the CLI.
+        searcher_builder = searcher_builder.with_theme_name(&name);
+    }
+
+    let outcome = searcher_builder.run()?;
 
     if !outcome.accepted {
         anyhow::bail!("aborted by user");

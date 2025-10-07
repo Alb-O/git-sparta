@@ -1,8 +1,9 @@
 use crate::input::SearchInput;
+use crate::theme::Theme;
 use crate::types::SearchMode;
 use crate::types::UiConfig;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Style, Stylize};
 use ratatui::text::Line;
 use ratatui::widgets::Tabs;
 
@@ -15,6 +16,7 @@ pub fn render_input_with_tabs(
     ui: &UiConfig,
     frame: &mut ratatui::Frame,
     area: Rect,
+    theme: &Theme,
 ) {
     // Calculate tabs width: " Tags " + " Files " + extra padding = about 16 chars
     let tabs_width = 16u16;
@@ -52,8 +54,8 @@ pub fn render_input_with_tabs(
     // Render prompt if present
     if !prompt.is_empty() {
         let prompt_text = format!("{} > ", prompt);
-        let prompt_widget = ratatui::widgets::Paragraph::new(prompt_text)
-            .style(Style::default().fg(Color::LightCyan));
+        let prompt_widget =
+            ratatui::widgets::Paragraph::new(prompt_text).style(theme.prompt_style());
         frame.render_widget(prompt_widget, horizontal[0]);
 
         // Render textarea in the middle section
@@ -73,25 +75,25 @@ pub fn render_input_with_tabs(
     // Add extra padding to rightmost tab to prevent cutoff
     let tab_titles = vec![
         Line::from(format!(" {} ", "Tags"))
-            .fg(Color::Rgb(226, 232, 240))
+            .fg(theme.header_fg)
             .bg(if selected == 0 {
-                Color::Rgb(15, 23, 42)
+                theme.header_bg
             } else {
-                Color::Rgb(30, 41, 59)
+                theme.row_highlight_bg
             }),
         Line::from(format!(" {} ", "Files "))
-            .fg(Color::Rgb(226, 232, 240))
+            .fg(theme.header_fg)
             .bg(if selected == 1 {
-                Color::Rgb(15, 23, 42)
+                theme.header_bg
             } else {
-                Color::Rgb(30, 41, 59)
+                theme.row_highlight_bg
             }),
     ];
 
     let tabs = Tabs::new(tab_titles)
         .select(selected)
         .divider("")
-        .highlight_style(Style::default().bg(Color::Rgb(15, 23, 42)));
+        .highlight_style(Style::default().bg(theme.header_bg));
 
     frame.render_widget(tabs, tabs_area);
 }

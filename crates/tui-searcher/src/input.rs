@@ -3,11 +3,8 @@
 //! This module provides a wrapper around `TextArea` configured for single-line input,
 //! similar to `<input>` in HTML.
 
-use ratatui::{
-    Frame,
-    layout::Rect,
-    style::{Color, Style},
-};
+use crate::theme::Theme;
+use ratatui::{Frame, layout::Rect};
 use tui_textarea::{Input, Key, TextArea};
 
 /// A single-line text input widget
@@ -76,7 +73,7 @@ impl<'a> SearchInput<'a> {
         } else {
             format!("{} > {}", prompt, self.text())
         };
-        let para = Paragraph::new(display).style(Style::default().fg(Color::LightCyan));
+        let para = Paragraph::new(display).style(Theme::default().prompt_style());
         para.render(area, frame.buffer_mut());
     }
 

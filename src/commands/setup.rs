@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
+pub fn run(config_dir: Option<&Path>, auto_yes: bool, _theme: Option<String>) -> Result<()> {
     let config_dir = config_dir.unwrap_or_else(|| Path::new("."));
     let config = Config::load(config_dir)?;
 

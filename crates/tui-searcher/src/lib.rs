@@ -2,11 +2,13 @@ pub mod app;
 pub mod input;
 pub mod tables;
 pub mod tabs;
+pub mod theme;
 pub mod types;
 pub mod utils;
 
 pub use app::run;
 pub use input::SearchInput;
+pub use theme::{LIGHT, SLATE, SOLARIZED, Theme};
 pub use types::{FacetRow, FileRow, PaneUiConfig, SearchData, SearchMode, UiConfig};
 
 use ratatui::layout::Constraint;
@@ -22,6 +24,7 @@ pub struct Searcher {
     facet_widths: Option<Vec<Constraint>>,
     file_widths: Option<Vec<Constraint>>,
     ui_config: Option<UiConfig>,
+    theme: Option<Theme>,
 }
 
 impl Searcher {
@@ -35,6 +38,7 @@ impl Searcher {
             facet_widths: None,
             file_widths: None,
             ui_config: None,
+            theme: None,
         }
     }
 
@@ -65,6 +69,18 @@ impl Searcher {
         self
     }
 
+    pub fn with_theme_name(mut self, name: &str) -> Self {
+        if let Some(theme) = crate::theme::by_name(name) {
+            self.theme = Some(theme);
+        }
+        self
+    }
+
+    pub fn with_theme(mut self, theme: Theme) -> Self {
+        self.theme = Some(theme);
+        self
+    }
+
     /// Run the interactive searcher with the configured options.
     pub fn run(self) -> anyhow::Result<crate::types::SearchOutcome> {
         // Build an App and apply optional customizations, then run it.
@@ -86,6 +102,9 @@ impl Searcher {
         }
         if let Some(ui) = self.ui_config {
             app.ui = ui;
+        }
+        if let Some(theme) = self.theme {
+            app.set_theme(theme);
         }
 
         app.run()

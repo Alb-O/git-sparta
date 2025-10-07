@@ -1,6 +1,10 @@
+mod common;
+use clap::Parser;
+use common::{Opts, apply_theme};
 use git_sparta::tui::{self, FacetRow, FileRow, SearchData};
 
 fn main() -> anyhow::Result<()> {
+    let opts = Opts::parse();
     let facets = vec![
         FacetRow {
             name: "backend".into(),
@@ -126,7 +130,10 @@ fn main() -> anyhow::Result<()> {
         files,
     };
 
-    let outcome = tui::run(data)?;
+    let searcher = tui::Searcher::new(data).with_input_title("workspace");
+    let searcher = apply_theme(searcher, &opts);
+
+    let outcome = searcher.run()?;
     if outcome.accepted {
         println!("Workspace walkthrough accepted");
     } else {
