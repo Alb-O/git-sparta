@@ -9,10 +9,9 @@ pub struct Opts {
 }
 
 /// Apply the chosen theme (if any) to the provided Searcher and return it.
-pub fn apply_theme(
-    mut searcher: git_sparta::tui::Searcher,
-    opts: &Opts,
-) -> git_sparta::tui::Searcher {
+use riz::Searcher; // Add this at the top if the type is at the crate root, or adjust the path as needed
+
+pub fn apply_theme(mut searcher: Searcher, opts: &Opts) -> Searcher {
     if let Some(name) = opts.theme.as_deref() {
         searcher = searcher.with_theme_name(name);
     }

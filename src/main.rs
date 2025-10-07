@@ -70,14 +70,14 @@ fn main() -> anyhow::Result<()> {
 }
 
 // clap value parser that validates theme names against the single source of truth
-// in the tui_searcher theme module. Returns the provided string on success or an
+// in the riz theme module. Returns the provided string on success or an
 // error message listing valid choices.
 fn parse_theme(s: &str) -> Result<String, String> {
-    if git_sparta::tui::theme::by_name(s).is_some() {
+    if riz::theme::by_name(s).is_some() {
         Ok(s.to_string())
     } else {
         let mut valid = String::new();
-        for &n in git_sparta::tui::theme::NAMES {
+        for &n in riz::theme::NAMES {
             if !valid.is_empty() {
                 valid.push_str(", ");
             }

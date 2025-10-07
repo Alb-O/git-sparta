@@ -1,3 +1,6 @@
 [submodule "vendor/frizbee"]
 	path = vendor/frizbee
 	url = https://github.com/saghen/frizbee
+[submodule "crates/riz"]
+	path = crates/riz
+	url = https://github.com/Alb-O/riz

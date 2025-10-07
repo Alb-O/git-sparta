@@ -519,10 +519,10 @@ dependencies = [
  "owo-colors",
  "pathdiff",
  "ratatui",
+ "riz",
  "serde",
  "serde_json",
  "tempfile",
- "tui_searcher",
  "walkdir",
 ]
 
@@ -2021,6 +2021,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
 
 [[package]]
+name = "riz"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "frizbee",
+ "ratatui",
+ "throbber-widgets-tui",
+ "tui-textarea",
+ "walkdir",
+]
+
+[[package]]
 name = "rustix"
 version = "0.38.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2287,6 +2299,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "throbber-widgets-tui"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45e58887883fb0a259717b16d68d251983e40850b4b2f45c2da410f46d4333dc"
+dependencies = [
+ "ratatui",
+]
+
+[[package]]
 name = "tinystr"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2320,17 +2341,6 @@ dependencies = [
  "crossterm",
  "ratatui",
  "unicode-width 0.2.0",
-]
-
-[[package]]
-name = "tui_searcher"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "frizbee",
- "ratatui",
- "tui-textarea",
- "walkdir",
 ]
 
 [[package]]

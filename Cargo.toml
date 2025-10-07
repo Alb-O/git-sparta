@@ -19,9 +19,9 @@ serde_json = "1.0.145"
 tempfile = "3.23.0"
 walkdir = "2.5.0"
 frizbee = { git = "https://github.com/saghen/frizbee.git" , branch = "main" }
-tui_searcher = { path = "crates/tui-searcher" }
+riz = { path = "crates/riz" }
 
 [workspace]
 members = [
-	"crates/tui-searcher",
+	"crates/riz",
 ]
