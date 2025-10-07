@@ -1,8 +1,10 @@
 pub mod app;
+pub mod input;
 pub mod types;
 pub mod utils;
 
 pub use app::run;
+pub use input::SearchInput;
 pub use types::{FacetRow, FileRow, PaneUiConfig, SearchData, SearchMode, UiConfig};
 
 use ratatui::layout::Constraint;
