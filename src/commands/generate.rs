@@ -1,8 +1,8 @@
 use crate::git;
 use anyhow::{Context, Result};
+use frz;
 use gix::attrs::StateRef;
 use gix::bstr::ByteSlice;
-use riz;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -91,24 +91,24 @@ pub fn run(
     let patterns: Vec<String> = unique_patterns.into_iter().collect();
     let facets = tag_counts
         .into_iter()
-        .map(|(name, count)| riz::FacetRow::new(name, count))
+        .map(|(name, count)| frz::FacetRow::new(name, count))
         .collect();
     let files = file_map
         .into_iter()
-        .map(|(path, tags)| riz::FileRow::new(path, tags.into_iter()))
+        .map(|(path, tags)| frz::FileRow::new(path, tags.into_iter()))
         .collect();
 
-    let data = riz::SearchData::new()
+    let data = frz::SearchData::new()
         .with_context(root.display().to_string())
         .with_initial_query(tag)
         .with_facets(facets)
         .with_files(files);
 
     let mut searcher_builder =
-        riz::Searcher::new(data).with_ui_config(riz::UiConfig::tags_and_files());
+        frz::Searcher::new(data).with_ui_config(frz::UiConfig::tags_and_files());
 
     if let Some(name) = theme {
-        // Use centralized theme lookup from the riz crate; with_theme_name is
+        // Use centralized theme lookup from the frz crate; with_theme_name is
         // forgiving (it silently ignores unknown names), but the clap parser
         // will already have validated values when supplied via the CLI.
         searcher_builder = searcher_builder.with_theme_name(&name);

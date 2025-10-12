@@ -1,7 +1,7 @@
 mod common;
 use clap::Parser;
 use common::{Opts, apply_theme};
-use riz::{self, FacetRow, FileRow, SearchData, SearchSelection};
+use frz::{self, FacetRow, FileRow, SearchData, SearchSelection};
 
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
@@ -56,8 +56,8 @@ fn main() -> anyhow::Result<()> {
         .with_facets(facets)
         .with_files(files);
 
-    let searcher = riz::Searcher::new(data)
-        .with_ui_config(riz::UiConfig::tags_and_files())
+    let searcher = frz::Searcher::new(data)
+        .with_ui_config(frz::UiConfig::tags_and_files())
         .with_input_title("demo");
     let searcher = apply_theme(searcher, &opts);
 

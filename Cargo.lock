@@ -609,6 +609,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "frz"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "config",
+ "directories",
+ "frizbee",
+ "ignore",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "throbber-widgets-tui",
+ "tui-textarea",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -649,11 +667,11 @@ dependencies = [
  "clap",
  "dunce",
  "frizbee",
+ "frz",
  "gix",
  "owo-colors",
  "pathdiff",
  "ratatui",
- "riz",
  "serde",
  "serde_json",
  "tempfile",
@@ -2250,24 +2268,6 @@ name = "regex-syntax"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3160422bbd54dd5ecfdca71e5fd59b7b8fe2b1697ab2baf64f6d05dcc66d298"
-
-[[package]]
-name = "riz"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "config",
- "directories",
- "frizbee",
- "ignore",
- "ratatui",
- "serde",
- "serde_json",
- "tempfile",
- "throbber-widgets-tui",
- "tui-textarea",
-]
 
 [[package]]
 name = "ron"

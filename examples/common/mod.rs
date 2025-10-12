@@ -9,7 +9,7 @@ pub struct Opts {
 }
 
 /// Apply the chosen theme (if any) to the provided Searcher and return it.
-use riz::Searcher; // Add this at the top if the type is at the crate root, or adjust the path as needed
+use frz::Searcher; // Add this at the top if the type is at the crate root, or adjust the path as needed
 
 pub fn apply_theme(mut searcher: Searcher, opts: &Opts) -> Searcher {
     if let Some(name) = opts.theme.as_deref() {
