@@ -611,6 +611,8 @@ dependencies = [
 [[package]]
 name = "frz"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66edbfb4ada43ed5f590b78a8b91b8e747d33e3eaf2cb78a5c7c5366a7ddb7ee"
 dependencies = [
  "anyhow",
  "clap",
@@ -621,7 +623,6 @@ dependencies = [
  "ratatui",
  "serde",
  "serde_json",
- "tempfile",
  "throbber-widgets-tui",
  "tui-textarea",
 ]
