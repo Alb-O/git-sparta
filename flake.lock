@@ -15,6 +15,27 @@
         "type": "github"
       }
     },
+    "fenix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-analyzer-src": "rust-analyzer-src"
+      },
+      "locked": {
+        "lastModified": 1760164678,
+        "narHash": "sha256-yxcfwZCysR6zPaFv7is3/FWd1h0h6kXME0vueSwTBhU=",
+        "owner": "nix-community",
+        "repo": "fenix",
+        "rev": "2579f163559b902959cc420a6d3bfbd98c46a323",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nix-community",
+        "repo": "fenix",
+        "type": "github"
+      }
+    },
     "flake-parts": {
       "inputs": {
         "nixpkgs-lib": [
@@ -67,30 +88,31 @@
         "type": "github"
       }
     },
-    "riz": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1760009716,
-        "narHash": "sha256-P+4RARtZ+y1hk/rrka06b9BkidiREBWjgCuR6jhDgkA=",
-        "ref": "refs/heads/main",
-        "rev": "c510542c29d148ec1b1fc8ab48674e5a5c746844",
-        "revCount": 33,
-        "type": "git",
-        "url": "https://github.com/Alb-O/riz"
-      },
-      "original": {
-        "type": "git",
-        "url": "https://github.com/Alb-O/riz"
-      }
-    },
     "root": {
       "inputs": {
+        "fenix": "fenix",
         "flake-parts": "flake-parts",
         "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs",
-        "riz": "riz",
         "rust-flake": "rust-flake",
         "systems": "systems"
+      }
+    },
+    "rust-analyzer-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1760090851,
+        "narHash": "sha256-XGkBjf4Dzg6tXd0KGgKzeW4oVX/iLzLhD3rQ1cATpqM=",
+        "owner": "rust-lang",
+        "repo": "rust-analyzer",
+        "rev": "b93180b4f2cb3c81ac7f17f46e3dfcb30ecc7843",
+        "type": "github"
+      },
+      "original": {
+        "owner": "rust-lang",
+        "ref": "nightly",
+        "repo": "rust-analyzer",
+        "type": "github"
       }
     },
     "rust-flake": {

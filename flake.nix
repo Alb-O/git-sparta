@@ -10,10 +10,8 @@
     git-hooks.url = "github:cachix/git-hooks.nix";
     git-hooks.flake = false;
 
-    riz = {
-      url = "git+https://github.com/Alb-O/riz";
-      flake = false;
-    };
+    fenix.url = "github:nix-community/fenix";
+    fenix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs:

@@ -3,41 +3,32 @@
   perSystem =
     { pkgs, ... }:
     let
-      baseSrc = builtins.path {
-        path = ../../.;
-        name = "git-sparta-src";
+      toolchain = inputs.fenix.packages.${pkgs.system}.toolchainOf {
+        channel = "nightly";
+        date = "2025-10-01";
+        sha256 = "sha256-GCGEXGZeJySLND0KU5TdtTrqFV76TF3UdvAHSUegSsk=";
       };
 
-      rizSrc = builtins.path {
-        path = inputs.riz;
-        name = "riz-src";
+      rustPlatform = pkgs.makeRustPlatform {
+        cargo = toolchain.cargo;
+        rustc = toolchain.rustc;
       };
 
-      src = pkgs.runCommand "git-sparta-src" { } ''
-        tmp=$TMPDIR/src
-        mkdir -p "$tmp"
-        cp -R ${baseSrc}/. "$tmp"
-        chmod -R u+w "$tmp"
-        rm -rf "$tmp/.git" "$tmp/.github" "$tmp/result"
-        rm -rf "$tmp"/result-*
-        rm -rf "$tmp/target" "$tmp/tmp"
-        rm -rf "$tmp/crates/riz"
-        mkdir -p "$tmp/crates"
-        cp -R ${rizSrc}/. "$tmp/crates/riz"
-        rm -rf "$tmp/crates/riz/.git"
-        mkdir -p "$out"
-        cp -R "$tmp"/. "$out"
-      '';
+      src = pkgs.nix-gitignore.gitignoreSource [
+        ".git"
+        ".github"
+        "target"
+        "result"
+        "result-*"
+        "tmp"
+      ] ../../.;
 
       cargoLock = {
         lockFile = ../../Cargo.lock;
-        outputHashes = {
-          "frizbee-0.5.0" = "sha256-1zg+rOCysXTKpvxKl80Eer3dijFeo2PWqtUqTRH5puA=";
-        };
       };
 
       gitSpartaPkg =
-        pkgs.rustPlatform.buildRustPackage {
+        rustPlatform.buildRustPackage {
           pname = "git-sparta";
           version = "0.1.0";
           inherit src cargoLock;
@@ -46,7 +37,11 @@
             [ IOKit ]
           );
           cargoBuildFlags = [ "--locked" ];
-          RUSTC_BOOTSTRAP = 1;
+          postInstall = ''
+            for link in sparta sparta-tags sparta-setup sparta-teardown; do
+              ln -s $out/bin/git-sparta $out/bin/$link
+            done
+          '';
         };
     in
     {

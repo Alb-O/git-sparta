@@ -18,7 +18,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 tempfile = "3.23.0"
 walkdir = "2.5.0"
-frizbee = { git = "https://github.com/saghen/frizbee.git" , branch = "main" }
+frizbee = { version = "0.5" }
 riz = { path = "crates/riz" }
 
 [workspace]
