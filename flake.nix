@@ -9,6 +9,11 @@
 
     git-hooks.url = "github:cachix/git-hooks.nix";
     git-hooks.flake = false;
+
+    riz = {
+      url = "git+https://github.com/Alb-O/riz";
+      flake = false;
+    };
   };
 
   outputs = inputs:

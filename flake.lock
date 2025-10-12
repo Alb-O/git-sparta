@@ -67,11 +67,28 @@
         "type": "github"
       }
     },
+    "riz": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1760009716,
+        "narHash": "sha256-P+4RARtZ+y1hk/rrka06b9BkidiREBWjgCuR6jhDgkA=",
+        "ref": "refs/heads/main",
+        "rev": "c510542c29d148ec1b1fc8ab48674e5a5c746844",
+        "revCount": 33,
+        "type": "git",
+        "url": "https://github.com/Alb-O/riz"
+      },
+      "original": {
+        "type": "git",
+        "url": "https://github.com/Alb-O/riz"
+      }
+    },
     "root": {
       "inputs": {
         "flake-parts": "flake-parts",
         "git-hooks": "git-hooks",
         "nixpkgs": "nixpkgs",
+        "riz": "riz",
         "rust-flake": "rust-flake",
         "systems": "systems"
       }
