@@ -9,9 +9,9 @@ pub struct Opts {
 }
 
 /// Apply the chosen theme (if any) to the provided Searcher and return it.
-use frz::Searcher; // Add this at the top if the type is at the crate root, or adjust the path as needed
+use frz::SearchUi; // Add this at the top if the type is at the crate root, or adjust the path as needed
 
-pub fn apply_theme(mut searcher: Searcher, opts: &Opts) -> Searcher {
+pub fn apply_theme(mut searcher: SearchUi, opts: &Opts) -> SearchUi {
     if let Some(name) = opts.theme.as_deref() {
         searcher = searcher.with_theme_name(name);
     }

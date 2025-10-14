@@ -58,7 +58,7 @@ fn main() -> anyhow::Result<()> {
         .with_facets(facets)
         .with_files(files);
 
-    let searcher = frz::Searcher::new(data)
+    let searcher = frz::SearchUi::new(data)
         .with_ui_config(frz::UiConfig::tags_and_files())
         .with_input_title("workspace");
     let searcher = apply_theme(searcher, &opts);

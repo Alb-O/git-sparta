@@ -105,7 +105,7 @@ pub fn run(
         .with_files(files);
 
     let mut searcher_builder =
-        frz::Searcher::new(data).with_ui_config(frz::UiConfig::tags_and_files());
+        frz::SearchUi::new(data).with_ui_config(frz::UiConfig::tags_and_files());
 
     if let Some(name) = theme {
         // Use centralized theme lookup from the frz crate; with_theme_name is
