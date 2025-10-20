@@ -91,7 +91,7 @@ impl SearchUi {
     pub fn new(data: SearchData) -> Self {
         Self {
             data,
-            ui_config: UiConfig::default(),
+            ui_config: UiConfig,
             input_title: None,
         }
     }
@@ -127,21 +127,13 @@ impl SearchUi {
         let pick_result = nucleo_picker::Picker::pick(&mut picker);
 
         let outcome = match pick_result {
-            Ok(Some(entry)) => {
-                let selection = entry.selection.clone();
+            Ok(opt) => {
+                let selection = opt.map(|entry| entry.selection.clone());
                 let query = nucleo_picker::Picker::query(&picker).to_string();
                 SearchOutcome {
-                    accepted: true,
+                    accepted: selection.is_some(),
                     query,
-                    selection: Some(selection),
-                }
-            }
-            Ok(None) => {
-                let query = nucleo_picker::Picker::query(&picker).to_string();
-                SearchOutcome {
-                    accepted: false,
-                    query,
-                    selection: None,
+                    selection,
                 }
             }
             Err(PickError::UserInterrupted) => {

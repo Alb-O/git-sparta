@@ -11,24 +11,11 @@ use walkdir::WalkDir;
 pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
     let (repo, root) = git::open_repository(repo_dir)?;
     let worktree = git::require_worktree(&repo)?;
+    let mut state = CollectState::new();
 
-    let mut matches: Vec<(String, String)> = Vec::new();
-    let mut unique_patterns: BTreeSet<String> = BTreeSet::new();
-    let mut tag_counts: BTreeMap<String, usize> = BTreeMap::new();
-    let mut file_map: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    collect_repository(&repo, &worktree, tag, "", &mut state)?;
 
-    collect_repository(
-        &repo,
-        &worktree,
-        tag,
-        "",
-        &mut matches,
-        &mut unique_patterns,
-        &mut tag_counts,
-        &mut file_map,
-    )?;
-
-    if matches.is_empty() {
+    if state.matches.is_empty() {
         anyhow::bail!(
             "no matching attribute entries found for tag '{}' in {}",
             tag,
@@ -37,20 +24,22 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
     }
 
     if auto_yes {
-        for pattern in &unique_patterns {
+        for pattern in &state.patterns {
             println!("{}", pattern);
         }
         return Ok(());
     }
 
-    let patterns: Vec<String> = unique_patterns.into_iter().collect();
-    let attributes = tag_counts
+    let patterns: Vec<String> = state.patterns.into_iter().collect();
+    let attributes = state
+        .tag_counts
         .into_iter()
         .map(|(name, count)| picker::AttributeRow::new(name, count))
         .collect();
-    let files = file_map
+    let files = state
+        .file_map
         .into_iter()
-        .map(|(path, tags)| picker::FileRow::new(path, tags.into_iter()))
+        .map(|(path, tags)| picker::FileRow::new(path, tags))
         .collect();
 
     let data = picker::SearchData::new()
@@ -95,9 +84,8 @@ fn discover_submodules(
             continue;
         }
 
-        let module_dir = match entry.path().parent() {
-            Some(dir) => dir,
-            None => continue,
+        let Some(module_dir) = entry.path().parent() else {
+            continue;
         };
         let rel_in_modules = match module_dir.strip_prefix(&modules_root) {
             Ok(rel) => rel,
@@ -126,9 +114,8 @@ fn discover_submodules(
 }
 
 fn module_worktree_relative(config_path: &Path, repo_base: &Path) -> Result<Option<String>> {
-    let module_dir = match config_path.parent() {
-        Some(dir) => dir,
-        None => return Ok(None),
+    let Some(module_dir) = config_path.parent() else {
+        return Ok(None);
     };
     let config = fs::read_to_string(config_path)
         .with_context(|| format!("failed to read {}", config_path.display()))?;
@@ -174,25 +161,38 @@ fn path_to_unix_string(path: &Path) -> String {
     result
 }
 
-fn record_match(
-    matches: &mut Vec<(String, String)>,
-    patterns: &mut BTreeSet<String>,
-    pattern: &str,
-    token: &str,
-    user_tag: &str,
-    tag_counts: &mut BTreeMap<String, usize>,
-    file_map: &mut BTreeMap<String, BTreeSet<String>>,
-) {
+fn record_match(state: &mut CollectState, pattern: &str, token: &str, user_tag: &str) {
     if token == "global" || token.contains(user_tag) {
         let pattern_owned = pattern.to_owned();
         let token_owned = token.to_owned();
-        matches.push((pattern_owned.clone(), token_owned.clone()));
-        patterns.insert(pattern_owned.clone());
-        *tag_counts.entry(token_owned.clone()).or_insert(0) += 1;
-        file_map
+        state
+            .matches
+            .push((pattern_owned.clone(), token_owned.clone()));
+        state.patterns.insert(pattern_owned.clone());
+        *state.tag_counts.entry(token_owned.clone()).or_insert(0) += 1;
+        state
+            .file_map
             .entry(pattern_owned)
             .or_default()
             .insert(token_owned);
+    }
+}
+
+struct CollectState {
+    matches: Vec<(String, String)>,
+    patterns: BTreeSet<String>,
+    tag_counts: BTreeMap<String, usize>,
+    file_map: BTreeMap<String, BTreeSet<String>>,
+}
+
+impl CollectState {
+    fn new() -> Self {
+        Self {
+            matches: Vec::new(),
+            patterns: BTreeSet::new(),
+            tag_counts: BTreeMap::new(),
+            file_map: BTreeMap::new(),
+        }
     }
 }
 
@@ -201,10 +201,7 @@ fn collect_repository<'repo>(
     worktree: &gix::Worktree<'repo>,
     tag: &str,
     prefix: &str,
-    matches: &mut Vec<(String, String)>,
-    patterns: &mut BTreeSet<String>,
-    tag_counts: &mut BTreeMap<String, usize>,
-    file_map: &mut BTreeMap<String, BTreeSet<String>>,
+    state: &mut CollectState,
 ) -> Result<()> {
     let base_display = worktree.base().display().to_string();
     let mut attr_stack = worktree
@@ -253,16 +250,7 @@ fn collect_repository<'repo>(
                 format!("{}/{}", prefix, local_path)
             };
 
-            collect_repository(
-                &sub_repo,
-                &sub_worktree,
-                tag,
-                &next_prefix,
-                matches,
-                patterns,
-                tag_counts,
-                file_map,
-            )?;
+            collect_repository(&sub_repo, &sub_worktree, tag, &next_prefix, state)?;
             continue;
         }
 
@@ -276,14 +264,12 @@ fn collect_repository<'repo>(
             .at_entry(path, Some(entry.mode))
             .with_context(|| format!("failed to evaluate attributes for {}", pattern))?;
         if platform.matching_attributes(&mut outcome)
-            && let Some(state) = outcome.iter_selected().next().map(|m| m.assignment.state)
+            && let Some(attr_state) = outcome.iter_selected().next().map(|m| m.assignment.state)
         {
-            match state {
+            match attr_state {
                 StateRef::Unspecified | StateRef::Unset => {}
                 StateRef::Set => {
-                    record_match(
-                        matches, patterns, &pattern, "global", tag, tag_counts, file_map,
-                    );
+                    record_match(state, &pattern, "global", tag);
                 }
                 StateRef::Value(value) => {
                     let raw = value.as_bstr().to_str_lossy();
@@ -292,9 +278,7 @@ fn collect_repository<'repo>(
                         .map(|token| token.trim())
                         .filter(|s| !s.is_empty())
                     {
-                        record_match(
-                            matches, patterns, &pattern, token, tag, tag_counts, file_map,
-                        );
+                        record_match(state, &pattern, token, tag);
                     }
                 }
             }
@@ -332,16 +316,7 @@ fn collect_repository<'repo>(
             format!("{}/{}", prefix, submodule_path)
         };
 
-        collect_repository(
-            &sub_repo,
-            &sub_worktree,
-            tag,
-            &next_prefix,
-            matches,
-            patterns,
-            tag_counts,
-            file_map,
-        )?;
+        collect_repository(&sub_repo, &sub_worktree, tag, &next_prefix, state)?;
         processed_submodules.insert(submodule_path);
     }
 

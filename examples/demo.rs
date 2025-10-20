@@ -47,7 +47,7 @@ fn main() -> anyhow::Result<()> {
             println!("Selected attribute: {}", attribute.name)
         }
         Some(SearchSelection::File(_)) => unreachable!("demo only returns attributes"),
-        None => println!("Demo accepted – imagine emitting sparse patterns here"),
+        _ => println!("Demo accepted – imagine emitting sparse patterns here"),
     }
 
     Ok(())

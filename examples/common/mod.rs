@@ -14,7 +14,7 @@ pub struct Opts {
 /// does not expose theme configuration.
 use git_sparta::picker::SearchUi;
 
-pub fn apply_theme(mut searcher: SearchUi, opts: &Opts) -> SearchUi {
+pub fn apply_theme(searcher: SearchUi, opts: &Opts) -> SearchUi {
     if let Some(_name) = opts.theme.as_deref() {
         // Theme selection is not currently supported by the nucleo picker integration.
     }
