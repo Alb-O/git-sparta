@@ -52,14 +52,8 @@ enum Command {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::GenerateSparseList { tag, yes, repo } => {
-            generate::run(&tag, yes, repo.as_deref())
-        }
-        Command::SetupSubmodule { config_dir, yes } => {
-            setup::run(config_dir.as_deref(), yes)
-        }
-        Command::TeardownSubmodule { config_dir, yes } => {
-            teardown::run(config_dir.as_deref(), yes)
-        }
+        Command::GenerateSparseList { tag, yes, repo } => generate::run(&tag, yes, repo.as_deref()),
+        Command::SetupSubmodule { config_dir, yes } => setup::run(config_dir.as_deref(), yes),
+        Command::TeardownSubmodule { config_dir, yes } => teardown::run(config_dir.as_deref(), yes),
     }
 }

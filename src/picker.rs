@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use devicons::FileIcon;
-use nucleo_picker::{error::PickError, PickerOptions, Render};
+use nucleo_picker::{PickerOptions, Render, error::PickError};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttributeRow {
@@ -155,7 +155,7 @@ impl SearchUi {
             Err(PickError::NotInteractive) => {
                 return Err(anyhow!(
                     "interactive picker requires an interactive stderr; rerun in a terminal or pass --yes"
-                ))
+                ));
             }
             Err(PickError::Disconnected) => {
                 return Err(anyhow!("picker event channel disconnected"));

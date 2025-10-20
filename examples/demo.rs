@@ -1,6 +1,6 @@
 mod common;
 use clap::Parser;
-use common::{apply_theme, Opts};
+use common::{Opts, apply_theme};
 use git_sparta::picker::{AttributeRow, SearchData, SearchSelection, SearchUi, UiConfig};
 
 fn main() -> anyhow::Result<()> {
