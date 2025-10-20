@@ -9,11 +9,14 @@ pub struct Opts {
 }
 
 /// Apply the chosen theme (if any) to the provided Searcher and return it.
-use frz::SearchUi; // Add this at the top if the type is at the crate root, or adjust the path as needed
+///
+/// Theme selection is currently a no-op because the `nucleo-picker` integration
+/// does not expose theme configuration.
+use git_sparta::picker::SearchUi;
 
 pub fn apply_theme(mut searcher: SearchUi, opts: &Opts) -> SearchUi {
-    if let Some(name) = opts.theme.as_deref() {
-        searcher = searcher.with_theme_name(name);
+    if let Some(_name) = opts.theme.as_deref() {
+        // Theme selection is not currently supported by the nucleo picker integration.
     }
     searcher
 }

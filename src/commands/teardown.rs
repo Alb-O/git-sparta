@@ -5,7 +5,7 @@ use gix::config::{File as GitConfigFile, Source};
 use std::fs;
 use std::path::Path;
 
-pub fn run(config_dir: Option<&Path>, auto_yes: bool, _theme: Option<String>) -> Result<()> {
+pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
     let config_dir = config_dir.unwrap_or_else(|| Path::new("."));
     let config = Config::load(config_dir)?;
 

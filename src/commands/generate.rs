@@ -1,6 +1,5 @@
-use crate::git;
+use crate::{git, picker};
 use anyhow::{Context, Result};
-use frz;
 use gix::attrs::StateRef;
 use gix::bstr::ByteSlice;
 use std::collections::{BTreeMap, BTreeSet};
@@ -10,7 +9,6 @@ pub fn run(
     tag: &str,
     auto_yes: bool,
     repo_dir: Option<&Path>,
-    theme: Option<String>,
 ) -> Result<()> {
     let (repo, root) = git::open_repository(repo_dir)?;
     let worktree = git::require_worktree(&repo)?;
@@ -89,32 +87,24 @@ pub fn run(
     }
 
     let patterns: Vec<String> = unique_patterns.into_iter().collect();
-    let facets = tag_counts
+    let attributes = tag_counts
         .into_iter()
-        .map(|(name, count)| frz::FacetRow::new(name, count))
+        .map(|(name, count)| picker::AttributeRow::new(name, count))
         .collect();
     let files = file_map
         .into_iter()
-        .map(|(path, tags)| frz::FileRow::new(path, tags.into_iter()))
+        .map(|(path, tags)| picker::FileRow::new(path, tags.into_iter()))
         .collect();
 
-    let data = frz::SearchData::new()
+    let data = picker::SearchData::new()
         .with_context(root.display().to_string())
         .with_initial_query(tag)
-        .with_facets(facets)
+        .with_attributes(attributes)
         .with_files(files);
 
-    let mut searcher_builder =
-        frz::SearchUi::new(data).with_ui_config(frz::UiConfig::tags_and_files());
-
-    if let Some(name) = theme {
-        // Use centralized theme lookup from the frz crate; with_theme_name is
-        // forgiving (it silently ignores unknown names), but the clap parser
-        // will already have validated values when supplied via the CLI.
-        searcher_builder = searcher_builder.with_theme_name(&name);
-    }
-
-    let outcome = searcher_builder.run()?;
+    let outcome = picker::SearchUi::new(data)
+        .with_ui_config(picker::UiConfig::tags_and_files())
+        .run()?;
 
     if !outcome.accepted {
         anyhow::bail!("aborted by user");

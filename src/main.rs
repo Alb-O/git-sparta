@@ -12,10 +12,6 @@ use std::path::PathBuf;
     version
 )]
 struct Cli {
-    /// Optional theme for TUI components.
-    #[arg(long, value_name = "THEME", value_parser = parse_theme)]
-    theme: Option<String>,
-
     #[command(subcommand)]
     command: Command,
 }
@@ -55,34 +51,15 @@ enum Command {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let theme = cli.theme.clone();
     match cli.command {
         Command::GenerateSparseList { tag, yes, repo } => {
-            generate::run(&tag, yes, repo.as_deref(), theme)
+            generate::run(&tag, yes, repo.as_deref())
         }
         Command::SetupSubmodule { config_dir, yes } => {
-            setup::run(config_dir.as_deref(), yes, theme)
+            setup::run(config_dir.as_deref(), yes)
         }
         Command::TeardownSubmodule { config_dir, yes } => {
-            teardown::run(config_dir.as_deref(), yes, theme)
+            teardown::run(config_dir.as_deref(), yes)
         }
-    }
-}
-
-// clap value parser that validates theme names against the single source of truth
-// in the frz theme module. Returns the provided string on success or an
-// error message listing valid choices.
-fn parse_theme(s: &str) -> Result<String, String> {
-    if frz::theme::by_name(s).is_some() {
-        Ok(s.to_string())
-    } else {
-        let mut valid = String::new();
-        for &n in frz::theme::NAMES {
-            if !valid.is_empty() {
-                valid.push_str(", ");
-            }
-            valid.push_str(n);
-        }
-        Err(format!("unknown theme '{}'; valid values: {}", s, valid))
     }
 }

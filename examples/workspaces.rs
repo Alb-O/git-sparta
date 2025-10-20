@@ -1,12 +1,12 @@
 mod common;
 use clap::Parser;
-use common::{Opts, apply_theme};
-use frz::{self, FacetRow, FileRow, SearchData, SearchSelection};
+use common::{apply_theme, Opts};
+use git_sparta::picker::{AttributeRow, FileRow, SearchData, SearchSelection, SearchUi, UiConfig};
 
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
 
-    let facets: Vec<FacetRow> = [
+    let attributes: Vec<AttributeRow> = [
         ("backend", 7),
         ("frontend", 5),
         ("integration", 3),
@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
         ("scripts", 2),
     ]
     .into_iter()
-    .map(|(name, count)| FacetRow::new(name, count))
+    .map(|(name, count)| AttributeRow::new(name, count))
     .collect();
 
     let files: Vec<FileRow> = vec![
@@ -55,11 +55,11 @@ fn main() -> anyhow::Result<()> {
     let data = SearchData::new()
         .with_context("workspace-prototype")
         .with_initial_query("workspace")
-        .with_facets(facets)
+        .with_attributes(attributes)
         .with_files(files);
 
-    let searcher = frz::SearchUi::new(data)
-        .with_ui_config(frz::UiConfig::tags_and_files())
+    let searcher = SearchUi::new(data)
+        .with_ui_config(UiConfig::tags_and_files())
         .with_input_title("workspace");
     let searcher = apply_theme(searcher, &opts);
 
@@ -70,8 +70,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     match outcome.selection {
-        Some(SearchSelection::Facet(facet)) => {
-            println!("Selected workspace facet: {}", facet.name)
+        Some(SearchSelection::Attribute(attribute)) => {
+            println!("Selected workspace attribute: {}", attribute.name)
         }
         Some(SearchSelection::File(file)) => println!("Selected workspace file: {}", file.path),
         None => println!("Workspace walkthrough accepted"),
