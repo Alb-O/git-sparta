@@ -1,30 +1,10 @@
 mod common;
 use clap::Parser;
 use common::{apply_theme, Opts};
-use git_sparta::picker::{AttributeRow, FileRow, SearchData, SearchSelection, SearchUi, UiConfig};
+use git_sparta::picker::{FileRow, SearchData, SearchSelection, SearchUi, UiConfig};
 
 fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
-
-    let attributes: Vec<AttributeRow> = [
-        ("backend", 7),
-        ("frontend", 5),
-        ("integration", 3),
-        ("mobile", 4),
-        ("qa", 2),
-        ("devops", 6),
-        ("docs", 3),
-        ("security", 2),
-        ("infra", 4),
-        ("legacy", 1),
-        ("api", 5),
-        ("db", 3),
-        ("tests", 4),
-        ("scripts", 2),
-    ]
-    .into_iter()
-    .map(|(name, count)| AttributeRow::new(name, count))
-    .collect();
 
     let files: Vec<FileRow> = vec![
         FileRow::new("services/catalog/lib.rs", ["backend", "integration"]),
@@ -54,8 +34,6 @@ fn main() -> anyhow::Result<()> {
 
     let data = SearchData::new()
         .with_context("workspace-prototype")
-        .with_initial_query("workspace")
-        .with_attributes(attributes)
         .with_files(files);
 
     let searcher = SearchUi::new(data)
@@ -70,10 +48,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     match outcome.selection {
-        Some(SearchSelection::Attribute(attribute)) => {
-            println!("Selected workspace attribute: {}", attribute.name)
-        }
         Some(SearchSelection::File(file)) => println!("Selected workspace file: {}", file.path),
+        Some(SearchSelection::Attribute(_)) => unreachable!("workspace demo only returns files"),
         None => println!("Workspace walkthrough accepted"),
     }
 

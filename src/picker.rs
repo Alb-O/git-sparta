@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use devicons::FileIcon;
 use nucleo_picker::{error::PickError, PickerOptions, Render};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -179,6 +180,9 @@ struct PickerEntry {
     selection: SearchSelection,
 }
 
+const ATTRIBUTE_ICON: char = '󰊢';
+const GENERIC_FILE_ICON: &str = "󰈔";
+
 fn build_entries(data: SearchData, _config: &UiConfig, _title: Option<&str>) -> Vec<PickerEntry> {
     fn assert_send_sync_static<T: Send + Sync + 'static>() {}
     assert_send_sync_static::<PickerEntry>();
@@ -186,18 +190,10 @@ fn build_entries(data: SearchData, _config: &UiConfig, _title: Option<&str>) -> 
     let mut entries = Vec::new();
 
     if !data.attributes.is_empty() {
-        let name_width = data
-            .attributes
-            .iter()
-            .map(|attribute| attribute.name.len())
-            .max()
-            .unwrap_or(0);
-
         for attribute in data.attributes.into_iter() {
             let render = format!(
-                "Attribute {name:<width$}  ({count} matches)",
+                "{ATTRIBUTE_ICON} {name}  ({count} matches)",
                 name = attribute.name,
-                width = name_width,
                 count = attribute.count
             );
             entries.push(PickerEntry {
@@ -208,7 +204,14 @@ fn build_entries(data: SearchData, _config: &UiConfig, _title: Option<&str>) -> 
     }
 
     for file in data.files.into_iter() {
-        let mut render = format!("File {}", file.path);
+        let icon = FileIcon::from(file.path.as_str());
+        let icon_string = icon.to_string();
+        let icon = if icon_string == "*" {
+            GENERIC_FILE_ICON
+        } else {
+            icon_string.as_str()
+        };
+        let mut render = format!("{icon} {}", file.path);
         if !file.tags.is_empty() {
             render.push_str("  [");
             render.push_str(&file.tags.join(", "));
