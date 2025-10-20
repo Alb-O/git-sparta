@@ -1,34 +1,21 @@
 use anyhow::{Context, Result};
+use std::fs;
 use std::path::{Path, PathBuf};
-
-pub fn find_non_submodule_root(start: &Path) -> Result<PathBuf> {
-    let mut current = start
-        .canonicalize()
-        .with_context(|| format!("failed to canonicalize {}", start.display()))?;
-    loop {
-        let git_path = current.join(".git");
-        if git_path.is_dir() {
-            return Ok(current);
-        } else if git_path.is_file() {
-            current = current.parent().map(Path::to_path_buf).ok_or_else(|| {
-                anyhow::anyhow!("reached filesystem root without finding non-submodule repo")
-            })?;
-            continue;
-        }
-        match current.parent() {
-            Some(parent) => current = parent.to_path_buf(),
-            None => {
-                anyhow::bail!("{} is not inside a git repository", start.display())
-            }
-        }
-    }
-}
 
 pub fn open_repository(start: Option<&Path>) -> Result<(gix::Repository, PathBuf)> {
     let start = start.unwrap_or_else(|| Path::new("."));
-    let root = find_non_submodule_root(start)?;
-    let repo = gix::open(&root)
-        .with_context(|| format!("failed to open git repository at {}", root.display()))?;
+    let repo = gix::ThreadSafeRepository::discover(start)
+        .with_context(|| format!("failed to discover git repository at {}", start.display()))?
+        .to_thread_local();
+
+    let root = repo
+        .workdir()
+        .or_else(|| repo.git_dir().parent())
+        .ok_or_else(|| anyhow::anyhow!("repository has no worktree or parent git directory"))?;
+
+    let root = fs::canonicalize(root)
+        .with_context(|| format!("failed to canonicalize {}", root.display()))?;
+
     Ok((repo, root))
 }
 
