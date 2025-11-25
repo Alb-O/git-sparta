@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 use anyhow::{Context, Result};
 use gix::bstr::{BStr, BString, ByteSlice};
@@ -8,7 +7,8 @@ use gix::config::{File as GitConfigFile, Source};
 use gix::sec::Trust;
 
 use crate::config::Config;
-use crate::{git, output};
+use crate::git::{self, git, lfs, sparse, submodule};
+use crate::output;
 
 pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	let config_dir = config_dir.unwrap_or_else(|| Path::new("."));
@@ -347,335 +347,83 @@ fn fetch_commit_sha(config: &Config) -> Result<String> {
 	let temp_path = temp_dir.path();
 
 	// Initialize a bare repository
-	Command::new("git")
-		.args(["init", "--bare", "-q"])
-		.arg(temp_path)
-		.output()?;
+	git::repository::init_bare(temp_path)?;
 
 	// Add remote
-	Command::new("git")
-		.args(["--git-dir", temp_path.to_str().unwrap()])
-		.args(["remote", "add", "origin", &config.submodule_url])
-		.output()?;
+	submodule::add_remote_if_missing(temp_path, "origin", &config.submodule_url)?;
 
 	// Configure alternates if using mirror
 	if let Some(mirror) = &config.shared_mirror_path {
-		let mirror_objects = mirror.join(".git/objects");
-		if mirror_objects.exists() {
-			let alternates_dir = temp_path.join("objects/info");
-			fs::create_dir_all(&alternates_dir)?;
-			let alternates_file = alternates_dir.join("alternates");
-			fs::write(&alternates_file, format!("{}\n", mirror_objects.display()))?;
-			output::note("Using git alternates from mirror");
-		}
+		submodule::configure_alternates(temp_path, mirror)?;
 	}
 
 	// Fetch
-	let output = Command::new("git")
-		.args(["--git-dir", temp_path.to_str().unwrap()])
-		.args(["fetch", "--depth=1", "origin", &config.submodule_branch])
-		.output()?;
-
-	if !output.status.success() {
-		anyhow::bail!(
-			"git fetch failed: {}",
-			String::from_utf8_lossy(&output.stderr)
-		);
-	}
+	submodule::fetch(temp_path, "origin", &config.submodule_branch, Some(1))?;
 
 	// Get the SHA
-	let output = Command::new("git")
-		.args(["--git-dir", temp_path.to_str().unwrap()])
+	let sha = git()
+		.git_dir(temp_path)
 		.args(["rev-parse", "FETCH_HEAD"])
-		.output()?;
+		.stdout()?;
 
-	if !output.status.success() {
-		anyhow::bail!("git rev-parse failed");
-	}
-
-	let sha = String::from_utf8(output.stdout)?.trim().to_string();
 	Ok(sha)
 }
 
 fn add_gitlink(repo: &gix::Repository, submodule_path: &Path, commit_sha: &str) -> Result<()> {
-	// Use git command to add the gitlink since gix doesn't have direct index manipulation yet
 	let repo_path = repo
 		.workdir()
 		.context("repository has no working directory")?;
-
-	let output = Command::new("git")
-		.current_dir(repo_path)
-		.args(["update-index", "--add", "--cacheinfo", "160000", commit_sha])
-		.arg(submodule_path)
-		.output()?;
-
-	if !output.status.success() {
-		anyhow::bail!(
-			"Failed to add gitlink: {}",
-			String::from_utf8_lossy(&output.stderr)
-		);
-	}
-
-	Ok(())
+	submodule::add_gitlink(repo_path, submodule_path, commit_sha)
 }
 
 fn git_submodule_init(work_repo: &Path, submodule_path: &Path) -> Result<()> {
-	let output = Command::new("git")
-		.current_dir(work_repo)
-		.args(["submodule", "init", "--"])
-		.arg(submodule_path)
-		.output()?;
-
-	if !output.status.success() {
-		anyhow::bail!(
-			"git submodule init failed: {}",
-			String::from_utf8_lossy(&output.stderr)
-		);
-	}
-
-	Ok(())
+	submodule::init(work_repo, submodule_path)
 }
 
 fn setup_modules_directory(modules_path: &Path, config: &Config) -> Result<()> {
-	if !modules_path.exists() {
-		output::note(&format!(
-			"Initializing bare repository at {}",
-			modules_path.display()
-		));
-		Command::new("git")
-			.args(["init", "--bare", "-q"])
-			.arg(modules_path)
-			.output()?;
-	}
-
-	// Configure alternates if using mirror
-	if let Some(mirror) = &config.shared_mirror_path {
-		let mirror_objects = mirror.join(".git/objects");
-		if mirror_objects.exists() {
-			let alternates_dir = modules_path.join("objects/info");
-			fs::create_dir_all(&alternates_dir)?;
-			let alternates_file = alternates_dir.join("alternates");
-			let current = if alternates_file.exists() {
-				fs::read_to_string(&alternates_file)?
-			} else {
-				String::new()
-			};
-
-			let mirror_path = mirror_objects.display().to_string();
-			if !current.lines().any(|line| line == mirror_path) {
-				fs::write(&alternates_file, format!("{}\n{}", current, mirror_path))?;
-				output::note("Configured git alternates from mirror");
-			}
-		}
-	}
-
-	Ok(())
+	submodule::setup_modules_directory(modules_path, config.shared_mirror_path.as_deref())
 }
 
 fn configure_modules_repo(modules_path: &Path, worktree_path: &Path) -> Result<()> {
-	Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["config", "core.bare", "false"])
-		.output()?;
-
-	Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["config", "core.worktree", worktree_path.to_str().unwrap()])
-		.output()?;
-
-	Ok(())
+	submodule::configure_modules_repo(modules_path, worktree_path)
 }
 
 fn add_remote_if_missing(modules_path: &Path, remote_url: &str) -> Result<()> {
-	let check_output = Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["remote", "get-url", "origin"])
-		.output()?;
-
-	if !check_output.status.success() {
-		// Remote doesn't exist, add it
-		Command::new("git")
-			.args(["--git-dir", modules_path.to_str().unwrap()])
-			.args(["remote", "add", "origin", remote_url])
-			.output()?;
-		output::note("Added remote 'origin'");
-	}
-
+	submodule::add_remote_if_missing(modules_path, "origin", remote_url)?;
 	Ok(())
 }
 
 fn fetch_to_modules(modules_path: &Path, config: &Config, _gitlink_exists: bool) -> Result<()> {
 	// Get the commit SHA from the gitlink
-	let worktree_path = &config.work_repo;
-	let output = Command::new("git")
-		.current_dir(worktree_path)
-		.args(["ls-files", "--stage", "--"])
-		.arg(&config.submodule_path_relative)
-		.output()?;
+	let commit_sha =
+		submodule::get_gitlink_sha(&config.work_repo, &config.submodule_path_relative)?;
 
-	let stdout = String::from_utf8(output.stdout)?;
-	let commit_sha = if let Some(line) = stdout.lines().next() {
-		line.split_whitespace()
-			.nth(1)
-			.context("invalid ls-files output")?
-	} else {
-		anyhow::bail!("No gitlink found in index");
-	};
-
-	// Check if we have the commit
-	let check_output = Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["cat-file", "-e", commit_sha])
-		.output()?;
-
-	if !check_output.status.success() {
-		// Need to fetch
+	// Check if we already have the commit
+	if !submodule::has_commit(modules_path, &commit_sha)? {
 		output::note(&format!("Fetching commit {}...", commit_sha));
-		let fetch_output = Command::new("git")
-			.args(["--git-dir", modules_path.to_str().unwrap()])
-			.args(["fetch", "--depth=1", "origin", &config.submodule_branch])
-			.output()?;
-
-		if !fetch_output.status.success() {
-			anyhow::bail!(
-				"git fetch failed: {}",
-				String::from_utf8_lossy(&fetch_output.stderr)
-			);
-		}
+		submodule::fetch(modules_path, "origin", &config.submodule_branch, Some(1))?;
 	}
 
-	// Update HEAD to point to the commit
-	Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["update-ref", "HEAD", commit_sha])
-		.output()?;
-
-	// Update branch tracking
-	Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args([
-			"update-ref",
-			&format!("refs/heads/{}", config.submodule_branch),
-			commit_sha,
-		])
-		.output()?;
-
-	Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args([
-			"symbolic-ref",
-			"HEAD",
-			&format!("refs/heads/{}", config.submodule_branch),
-		])
-		.output()?;
+	// Update refs
+	submodule::update_refs(modules_path, &commit_sha, &config.submodule_branch)?;
 
 	Ok(())
 }
 
 fn setup_sparse_checkout(modules_path: &Path, patterns: &[String]) -> Result<()> {
-	// Enable sparse checkout
-	Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["config", "core.sparseCheckout", "true"])
-		.output()?;
-
-	// Write sparse-checkout file
-	let sparse_file = modules_path.join("info/sparse-checkout");
-	fs::create_dir_all(modules_path.join("info"))?;
-	fs::write(&sparse_file, patterns.join("\n") + "\n")?;
-
-	Ok(())
+	sparse::configure(modules_path, patterns)
 }
 
 fn materialize_sparse_files(modules_path: &Path, worktree_path: &Path) -> Result<()> {
-	// Run read-tree to update the index with sparse patterns
-	let output = Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["--work-tree", worktree_path.to_str().unwrap()])
-		.args(["read-tree", "-mu", "HEAD"])
-		.output()?;
-
-	if !output.status.success() {
-		anyhow::bail!(
-			"git read-tree failed: {}",
-			String::from_utf8_lossy(&output.stderr)
-		);
-	}
-
-	// Checkout the files
-	let output = Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["--work-tree", worktree_path.to_str().unwrap()])
-		.args(["checkout-index", "--all", "--force"])
-		.output()?;
-
-	if !output.status.success() {
-		anyhow::bail!(
-			"git checkout-index failed: {}",
-			String::from_utf8_lossy(&output.stderr)
-		);
-	}
-
-	Ok(())
+	sparse::checkout(modules_path, worktree_path)
 }
 
 /// Check if the repository uses Git LFS by looking for filter=lfs in .gitattributes
 fn repo_uses_lfs(worktree_path: &Path) -> bool {
-	let gitattributes = worktree_path.join(".gitattributes");
-	if let Ok(content) = fs::read_to_string(&gitattributes) {
-		return content.contains("filter=lfs");
-	}
-	false
+	lfs::is_enabled(worktree_path)
 }
 
 /// Fetch and checkout LFS objects for the sparse checkout
 fn fetch_lfs_objects(modules_path: &Path, worktree_path: &Path) -> Result<()> {
-	output::note("Fetching LFS objects...");
-
-	// First, ensure LFS is installed in this repo
-	let install_output = Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["--work-tree", worktree_path.to_str().unwrap()])
-		.args(["lfs", "install", "--local"])
-		.output()?;
-
-	if !install_output.status.success() {
-		// LFS might not be installed, warn but don't fail
-		output::warn(&format!(
-			"git lfs install failed (LFS may not be installed): {}",
-			String::from_utf8_lossy(&install_output.stderr)
-		));
-		return Ok(());
-	}
-
-	// Fetch LFS objects - this will use alternates if configured
-	let fetch_output = Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["--work-tree", worktree_path.to_str().unwrap()])
-		.args(["lfs", "fetch"])
-		.output()?;
-
-	if !fetch_output.status.success() {
-		output::warn(&format!(
-			"git lfs fetch warning: {}",
-			String::from_utf8_lossy(&fetch_output.stderr)
-		));
-		// Don't fail - alternates may already provide the objects
-	}
-
-	// Checkout (smudge) LFS files
-	let checkout_output = Command::new("git")
-		.args(["--git-dir", modules_path.to_str().unwrap()])
-		.args(["--work-tree", worktree_path.to_str().unwrap()])
-		.args(["lfs", "checkout"])
-		.output()?;
-
-	if !checkout_output.status.success() {
-		anyhow::bail!(
-			"git lfs checkout failed: {}",
-			String::from_utf8_lossy(&checkout_output.stderr)
-		);
-	}
-
-	Ok(())
+	lfs::fetch_and_checkout(modules_path, worktree_path)
 }
