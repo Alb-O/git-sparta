@@ -117,6 +117,12 @@ pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	materialize_sparse_files(&modules_path, &config.submodule_path)?;
 	output::success("✓ Materialized sparse files");
 
+	// Handle LFS if the repository uses it
+	if repo_uses_lfs(&config.submodule_path) {
+		fetch_lfs_objects(&modules_path, &config.submodule_path)?;
+		output::success("✓ LFS objects fetched and checked out");
+	}
+
 	output::divider();
 	output::success(&format!(
 		"✓ Submodule '{}' successfully set up with sparse checkout!",
@@ -239,8 +245,30 @@ fn generate_sparse_patterns(config: &Config) -> Result<Vec<String>> {
 		config.submodule_path.clone()
 	};
 
-	if !repo_path.join(".git").exists() {
-		anyhow::bail!("No git repository found at {}", repo_path.display());
+	// Check if the path is a git repository (either .git directory or .git file for worktrees)
+	let git_path = repo_path.join(".git");
+	if !git_path.exists() {
+		if config.shared_mirror_path.is_some() {
+			anyhow::bail!(
+				"No git repository found at mirror path: {}\n\
+				 Ensure SHARED_MIRROR_PATH points to a valid git repository.",
+				repo_path.display()
+			);
+		} else {
+			anyhow::bail!(
+				"No git repository found at: {}\n\n\
+				 To generate sparse patterns, git-sparta needs access to the repository's \
+				 .gitattributes files. You can either:\n\
+				 1. Set SHARED_MIRROR_PATH in your config to point to a local clone/mirror\n\
+				 2. Set the SHARED_MIRROR_PATH environment variable\n\
+				 3. Clone the repository first and run setup again\n\n\
+				 Example config:\n\
+				 {{\n\
+				   \"SHARED_MIRROR_PATH\": \"/path/to/local/mirror\"\n\
+				 }}",
+				repo_path.display()
+			);
+		}
 	}
 
 	let (repo, _) = git::open_repository(Some(&repo_path))?;
@@ -292,7 +320,13 @@ fn generate_sparse_patterns(config: &Config) -> Result<Vec<String>> {
 }
 
 fn check_gitlink_exists(repo: &gix::Repository, submodule_path: &Path) -> Result<bool> {
-	let index = repo.open_index()?;
+	let index = match repo.open_index() {
+		Ok(index) => index,
+		Err(_) => {
+			// No index means no gitlink exists
+			return Ok(false);
+		}
+	};
 	let path_str = submodule_path.to_string_lossy();
 
 	for entry in index.entries() {
@@ -579,6 +613,67 @@ fn materialize_sparse_files(modules_path: &Path, worktree_path: &Path) -> Result
 		anyhow::bail!(
 			"git checkout-index failed: {}",
 			String::from_utf8_lossy(&output.stderr)
+		);
+	}
+
+	Ok(())
+}
+
+/// Check if the repository uses Git LFS by looking for filter=lfs in .gitattributes
+fn repo_uses_lfs(worktree_path: &Path) -> bool {
+	let gitattributes = worktree_path.join(".gitattributes");
+	if let Ok(content) = fs::read_to_string(&gitattributes) {
+		return content.contains("filter=lfs");
+	}
+	false
+}
+
+/// Fetch and checkout LFS objects for the sparse checkout
+fn fetch_lfs_objects(modules_path: &Path, worktree_path: &Path) -> Result<()> {
+	output::note("Fetching LFS objects...");
+
+	// First, ensure LFS is installed in this repo
+	let install_output = Command::new("git")
+		.args(["--git-dir", modules_path.to_str().unwrap()])
+		.args(["--work-tree", worktree_path.to_str().unwrap()])
+		.args(["lfs", "install", "--local"])
+		.output()?;
+
+	if !install_output.status.success() {
+		// LFS might not be installed, warn but don't fail
+		output::warn(&format!(
+			"git lfs install failed (LFS may not be installed): {}",
+			String::from_utf8_lossy(&install_output.stderr)
+		));
+		return Ok(());
+	}
+
+	// Fetch LFS objects - this will use alternates if configured
+	let fetch_output = Command::new("git")
+		.args(["--git-dir", modules_path.to_str().unwrap()])
+		.args(["--work-tree", worktree_path.to_str().unwrap()])
+		.args(["lfs", "fetch"])
+		.output()?;
+
+	if !fetch_output.status.success() {
+		output::warn(&format!(
+			"git lfs fetch warning: {}",
+			String::from_utf8_lossy(&fetch_output.stderr)
+		));
+		// Don't fail - alternates may already provide the objects
+	}
+
+	// Checkout (smudge) LFS files
+	let checkout_output = Command::new("git")
+		.args(["--git-dir", modules_path.to_str().unwrap()])
+		.args(["--work-tree", worktree_path.to_str().unwrap()])
+		.args(["lfs", "checkout"])
+		.output()?;
+
+	if !checkout_output.status.success() {
+		anyhow::bail!(
+			"git lfs checkout failed: {}",
+			String::from_utf8_lossy(&checkout_output.stderr)
 		);
 	}
 
