@@ -2,12 +2,10 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use gix::bstr::{BStr, BString, ByteSlice};
-use gix::config::{File as GitConfigFile, Source};
-use gix::sec::Trust;
+use gix::bstr::ByteSlice;
 
 use crate::config::Config;
-use crate::git::{self, git, lfs, sparse, submodule};
+use crate::git::{self, attributes, config as git_config, git, lfs, sparse, submodule};
 use crate::output;
 
 pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
@@ -44,9 +42,21 @@ pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	output::note(&format!("Working in repository: {}", repo_root.display()));
 	output::note(&format!("Git directory: {}", git_dir.display()));
 
-	// Update .gitmodules and local git config
-	let gitmodules_changed = ensure_gitmodules(&config)?;
-	let git_config_changed = ensure_local_git_config(&git_dir, &config)?;
+	// Update .gitmodules and local git config using shared config module
+	let submodule_cfg = git_config::SubmoduleConfig::new(&config.submodule_name);
+
+	let gitmodules_changed = submodule_cfg.ensure_gitmodules(
+		&config.work_repo.join(".gitmodules"),
+		&config.submodule_path_relative.to_string_lossy(),
+		&config.submodule_url,
+		&config.submodule_branch,
+	)?;
+
+	let git_config_changed = submodule_cfg.ensure_local_config(
+		&git_dir.join("config"),
+		&config.submodule_url,
+		&config.submodule_branch,
+	)?;
 
 	if gitmodules_changed {
 		output::success("✓ Updated .gitmodules");
@@ -56,7 +66,9 @@ pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	}
 
 	// Calculate the modules path
-	let modules_path = git_dir.join("modules").join(&config.submodule_path_relative);
+	let modules_path = git_dir
+		.join("modules")
+		.join(&config.submodule_path_relative);
 
 	// Check if gitlink already exists in index
 	let gitlink_exists = check_gitlink_exists(&repo, &config.submodule_path_relative)?;
@@ -134,105 +146,6 @@ pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	Ok(())
 }
 
-fn ensure_gitmodules(config: &Config) -> Result<bool> {
-	let path = config.work_repo.join(".gitmodules");
-	let mut file = if path.exists() {
-		GitConfigFile::from_path_no_includes(path.clone(), Source::Local)
-			.with_context(|| format!("failed to load {}", path.display()))?
-	} else {
-		let metadata = gix::config::file::Metadata::from(Source::Local)
-			.at(&path)
-			.with(Trust::Full);
-		GitConfigFile::new(metadata)
-	};
-
-	let subsection = BString::from(config.submodule_name.clone());
-	let subsection_ref: &BStr = subsection.as_bstr();
-	let mut changed = false;
-
-	changed |= set_config_value(
-		&mut file,
-		"submodule",
-		Some(subsection_ref),
-		"path",
-		BString::from(
-			config
-				.submodule_path_relative
-				.to_string_lossy()
-				.into_owned(),
-		),
-	)?;
-	changed |= set_config_value(
-		&mut file,
-		"submodule",
-		Some(subsection_ref),
-		"url",
-		BString::from(config.submodule_url.clone()),
-	)?;
-	changed |= set_config_value(
-		&mut file,
-		"submodule",
-		Some(subsection_ref),
-		"branch",
-		BString::from(config.submodule_branch.clone()),
-	)?;
-
-	if changed {
-		let mut buf = Vec::new();
-		file.write_to(&mut buf)?;
-		fs::write(&path, buf)?;
-	}
-	Ok(changed)
-}
-
-fn ensure_local_git_config(git_dir: &Path, config: &Config) -> Result<bool> {
-	let path = git_dir.join("config");
-	let mut file = GitConfigFile::from_path_no_includes(path.clone(), Source::Local)
-		.with_context(|| format!("failed to read {}", path.display()))?;
-
-	let subsection = BString::from(config.submodule_name.clone());
-	let subsection_ref: &BStr = subsection.as_bstr();
-
-	let mut changed = false;
-	changed |= set_config_value(
-		&mut file,
-		"submodule",
-		Some(subsection_ref),
-		"url",
-		BString::from(config.submodule_url.clone()),
-	)?;
-	changed |= set_config_value(
-		&mut file,
-		"submodule",
-		Some(subsection_ref),
-		"branch",
-		BString::from(config.submodule_branch.clone()),
-	)?;
-
-	if changed {
-		let mut buf = Vec::new();
-		file.write_to(&mut buf)?;
-		fs::write(&path, buf)?;
-	}
-	Ok(changed)
-}
-
-fn set_config_value(
-	file: &mut GitConfigFile<'static>,
-	section: &str,
-	subsection: Option<&BStr>,
-	key: &str,
-	value: BString,
-) -> Result<bool> {
-	let key_name = key.to_owned();
-	let value_bytes: &[u8] = value.as_ref();
-	let value_ref: &BStr = value_bytes.as_bstr();
-	let previous = file.set_raw_value_by(section, subsection, key_name, value_ref)?;
-	Ok(previous
-		.map(|prev| prev.as_ref() != value_ref)
-		.unwrap_or(true))
-}
-
 fn generate_sparse_patterns(config: &Config) -> Result<Vec<String>> {
 	output::note("Generating sparse patterns...");
 
@@ -271,47 +184,13 @@ fn generate_sparse_patterns(config: &Config) -> Result<Vec<String>> {
 
 	let (repo, _) = git::open_repository(Some(&repo_path))?;
 	let worktree = git::require_worktree(&repo)?;
-	let mut attr_stack = worktree
-		.attributes(None)
-		.context("failed to load git attribute stack")?;
-	let mut outcome = attr_stack.selected_attribute_matches(["projects"]);
 
-	let index = repo.open_index().context("failed to load git index")?;
-
-	let mut patterns = std::collections::BTreeSet::new();
-	let tag = &config.project_tag;
-
-	for entry in index.entries() {
-		let path = entry.path(&index);
-		let platform = attr_stack
-			.at_entry(path, Some(entry.mode))
-			.with_context(|| format!("failed to evaluate attributes for {}", path))?;
-
-		if platform.matching_attributes(&mut outcome)
-			&& let Some(state) = outcome.iter_selected().next().map(|m| m.assignment.state)
-		{
-			match state {
-				gix::attrs::StateRef::Set => {
-					// Global tag
-					patterns.insert(path.to_str_lossy().into_owned());
-				}
-				gix::attrs::StateRef::Value(value) => {
-					let raw = value.as_bstr().to_str_lossy();
-					for token in raw.split(',').map(|s| s.trim()) {
-						if token == "global" || token.contains(tag.as_str()) {
-							patterns.insert(path.to_str_lossy().into_owned());
-							break;
-						}
-					}
-				}
-				_ => {}
-			}
-		}
-		outcome.reset();
-	}
+	// Use the shared attributes module to collect sparse patterns
+	let patterns =
+		attributes::collect_sparse_patterns(&repo, &worktree, &config.project_tag, "projects")?;
 
 	if patterns.is_empty() {
-		anyhow::bail!("No patterns found for tag '{}'", tag);
+		anyhow::bail!("No patterns found for tag '{}'", config.project_tag);
 	}
 
 	Ok(patterns.into_iter().collect())

@@ -2,11 +2,10 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use gix::bstr::{BStr, BString, ByteSlice};
-use gix::config::{File as GitConfigFile, Source};
 
 use crate::config::Config;
-use crate::{git, output};
+use crate::git::{self, config as git_config};
+use crate::output;
 
 pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	let config_dir = config_dir.unwrap_or_else(|| Path::new("."));
@@ -33,8 +32,12 @@ pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	let (repo, _) = git::open_repository(Some(&config.work_repo))?;
 	let git_dir = repo.git_dir().to_path_buf();
 
-	let gitmodules_changed = remove_from_gitmodules(&config)?;
-	let git_config_changed = remove_from_local_git_config(&git_dir, &config)?;
+	// Use shared config module for git config manipulation
+	let submodule_cfg = git_config::SubmoduleConfig::new(&config.submodule_name);
+
+	let gitmodules_changed =
+		submodule_cfg.remove_from_gitmodules(&config.work_repo.join(".gitmodules"))?;
+	let git_config_changed = submodule_cfg.remove_from_local_config(&git_dir.join("config"))?;
 
 	if gitmodules_changed {
 		output::success("Removed entry from .gitmodules");
@@ -65,52 +68,6 @@ pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	output::success(&format!("Submodule '{}' removed", config.submodule_name));
 	output::note("Review git status and stage removals as needed.");
 	Ok(())
-}
-
-fn remove_from_gitmodules(config: &Config) -> Result<bool> {
-	let path = config.work_repo.join(".gitmodules");
-	if !path.exists() {
-		return Ok(false);
-	}
-	let mut file = GitConfigFile::from_path_no_includes(path.clone(), Source::Local)
-		.with_context(|| format!("failed to read {}", path.display()))?;
-
-	let subsection = BString::from(config.submodule_name.clone());
-	let subsection_bytes: &[u8] = subsection.as_ref();
-	let subsection_ref: &BStr = subsection_bytes.as_bstr();
-	let removed = file.remove_section("submodule", Some(subsection_ref));
-
-	if removed.is_some() {
-		let mut buf = Vec::new();
-		file.write_to(&mut buf)?;
-		fs::write(&path, buf)?;
-		Ok(true)
-	} else {
-		Ok(false)
-	}
-}
-
-fn remove_from_local_git_config(git_dir: &Path, config: &Config) -> Result<bool> {
-	let path = git_dir.join("config");
-	if !path.exists() {
-		return Ok(false);
-	}
-	let mut file = GitConfigFile::from_path_no_includes(path.clone(), Source::Local)
-		.with_context(|| format!("failed to read {}", path.display()))?;
-
-	let subsection = BString::from(config.submodule_name.clone());
-	let subsection_bytes: &[u8] = subsection.as_ref();
-	let subsection_ref: &BStr = subsection_bytes.as_bstr();
-	let removed = file.remove_section("submodule", Some(subsection_ref));
-
-	if removed.is_some() {
-		let mut buf = Vec::new();
-		file.write_to(&mut buf)?;
-		fs::write(&path, buf)?;
-		Ok(true)
-	} else {
-		Ok(false)
-	}
 }
 
 fn prune_empty_parents(start: &Path, git_dir: &Path) -> Result<()> {

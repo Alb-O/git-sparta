@@ -4,9 +4,115 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use dunce::canonicalize;
+use walkdir::WalkDir;
 
 use super::git;
 use crate::output;
+
+/// Convert a path to a Unix-style string (forward slashes).
+pub fn path_to_unix_string(path: &Path) -> String {
+	let mut result = String::new();
+	for component in path.components() {
+		if !result.is_empty() {
+			result.push('/');
+		}
+		result.push_str(&component.as_os_str().to_string_lossy());
+	}
+	result
+}
+
+/// Discover submodules by scanning the `.git/modules` directory.
+///
+/// This is useful for finding submodules that may not be in the index yet,
+/// or for discovering nested submodules.
+pub fn discover_submodules(
+	repo: &gix::Repository,
+	worktree: &gix::Worktree<'_>,
+) -> Result<Vec<String>> {
+	let modules_root = repo.git_dir().join("modules");
+	if !modules_root.exists() {
+		return Ok(Vec::new());
+	}
+
+	let mut submodules = Vec::new();
+	for entry in WalkDir::new(&modules_root) {
+		let entry = entry.with_context(|| {
+			format!(
+				"failed to traverse git modules at {}",
+				modules_root.display()
+			)
+		})?;
+		if !entry.file_type().is_file() || entry.file_name() != "config" {
+			continue;
+		}
+
+		let Some(module_dir) = entry.path().parent() else {
+			continue;
+		};
+		let rel_in_modules = match module_dir.strip_prefix(&modules_root) {
+			Ok(rel) => rel,
+			Err(_) => continue,
+		};
+		let module_dir_rel = path_to_unix_string(rel_in_modules);
+		if module_dir_rel.is_empty() {
+			continue;
+		}
+
+		let Some(worktree_rel) = module_worktree_relative(entry.path(), worktree.base())? else {
+			continue;
+		};
+
+		if module_dir_rel != worktree_rel {
+			let normalized = module_dir_rel.replace("/modules/", "/");
+			if normalized == worktree_rel {
+				continue;
+			}
+		}
+
+		submodules.push(worktree_rel);
+	}
+
+	Ok(submodules)
+}
+
+/// Extract the worktree-relative path from a module's config file.
+fn module_worktree_relative(config_path: &Path, repo_base: &Path) -> Result<Option<String>> {
+	let Some(module_dir) = config_path.parent() else {
+		return Ok(None);
+	};
+	let config = fs::read_to_string(config_path)
+		.with_context(|| format!("failed to read {}", config_path.display()))?;
+	let worktree_value = config.lines().find_map(|line| {
+		let trimmed = line.trim();
+		trimmed
+			.strip_prefix("worktree")
+			.and_then(|rest| {
+				let rest = rest.trim_start();
+				rest.strip_prefix('=').map(str::trim_start)
+			})
+			.map(str::trim)
+			.filter(|value| !value.is_empty())
+			.map(str::to_owned)
+	});
+	let Some(worktree_rel) = worktree_value else {
+		return Ok(None);
+	};
+	let candidate = module_dir.join(&worktree_rel);
+	let abs_path = match canonicalize(&candidate) {
+		Ok(path) => path,
+		Err(_) => return Ok(None),
+	};
+	let rel_path = match abs_path.strip_prefix(repo_base) {
+		Ok(rel) => rel,
+		Err(_) => return Ok(None),
+	};
+	let rel_str = path_to_unix_string(rel_path);
+	if rel_str.is_empty() {
+		return Ok(None);
+	}
+	Ok(Some(rel_str))
+}
 
 /// Initialize submodule metadata in the parent repository.
 pub fn init(repo_path: &Path, submodule_path: &Path) -> Result<()> {
