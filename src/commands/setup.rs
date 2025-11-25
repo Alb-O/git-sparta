@@ -56,9 +56,7 @@ pub fn run(config_dir: Option<&Path>, auto_yes: bool) -> Result<()> {
 	}
 
 	// Calculate the modules path
-	let modules_path = git_dir
-		.join("modules")
-		.join(&config.submodule_path_relative);
+	let modules_path = git_dir.join("modules").join(&config.submodule_path_relative);
 
 	// Check if gitlink already exists in index
 	let gitlink_exists = check_gitlink_exists(&repo, &config.submodule_path_relative)?;

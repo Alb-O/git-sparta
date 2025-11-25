@@ -1,4 +1,7 @@
-{ lib, ... }:
+{
+  lib,
+  ...
+}:
 {
   perSystem =
     { pkgs, rustPlatform, ... }:
