@@ -3,9 +3,9 @@ use clap::Parser;
 /// Common CLI options used by example binaries.
 #[derive(Parser, Debug)]
 pub struct Opts {
-    /// Optional theme name (eg. "light"). Valid names are defined by the crate theme list.
-    #[arg(long, value_name = "THEME")]
-    pub theme: Option<String>,
+	/// Optional theme name (eg. "light"). Valid names are defined by the crate theme list.
+	#[arg(long, value_name = "THEME")]
+	pub theme: Option<String>,
 }
 
 /// Apply the chosen theme (if any) to the provided Searcher and return it.
@@ -15,8 +15,8 @@ pub struct Opts {
 use git_sparta::picker::SearchUi;
 
 pub fn apply_theme(searcher: SearchUi, opts: &Opts) -> SearchUi {
-    if let Some(_name) = opts.theme.as_deref() {
-        // Theme selection is not currently supported by the nucleo picker integration.
-    }
-    searcher
+	if let Some(_name) = opts.theme.as_deref() {
+		// Theme selection is not currently supported by the nucleo picker integration.
+	}
+	searcher
 }
