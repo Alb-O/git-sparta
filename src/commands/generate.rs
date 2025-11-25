@@ -10,28 +10,46 @@ use walkdir::WalkDir;
 
 use crate::{git, picker};
 
-pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
+pub fn run(tag: Option<&str>, auto_yes: bool, repo_dir: Option<&Path>, attribute: &str) -> Result<()> {
 	let (repo, root) = git::open_repository(repo_dir)?;
 	let worktree = git::require_worktree(&repo)?;
-	let mut state = CollectState::new();
 
-	collect_repository(&repo, &worktree, tag, "", &mut state)?;
+	// If no tag provided and not auto-yes, discover available tags and show picker
+	// Track whether we selected the tag interactively to avoid showing a second picker
+	let (selected_tag, tag_was_interactive) = match tag {
+		Some(t) => (t.to_owned(), false),
+		None => {
+			if auto_yes {
+				anyhow::bail!(
+					"tag argument is required when using --yes; run without --yes to select interactively"
+				);
+			}
+			(select_tag_interactively(&repo, &worktree, &root, attribute)?, true)
+		}
+	};
+
+	let mut state = CollectState::new();
+	collect_repository(&repo, &worktree, &selected_tag, "", &mut state, attribute)?;
 
 	if state.matches.is_empty() {
 		anyhow::bail!(
 			"no matching attribute entries found for tag '{}' in {}",
-			tag,
+			selected_tag,
 			root.display()
 		);
 	}
 
-	if auto_yes {
+	// Skip the preview picker if:
+	// - auto_yes is set, OR
+	// - the tag was already selected interactively (user already made their choice)
+	if auto_yes || tag_was_interactive {
 		for pattern in &state.patterns {
 			println!("{}", pattern);
 		}
 		return Ok(());
 	}
 
+	// Show preview picker only when tag was provided via CLI (let user confirm/browse)
 	let patterns: Vec<String> = state.patterns.into_iter().collect();
 	let attributes = state
 		.tag_counts
@@ -46,7 +64,7 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
 
 	let data = picker::SearchData::new()
 		.with_context(root.display().to_string())
-		.with_initial_query(tag)
+		.with_initial_query(&selected_tag)
 		.with_attributes(attributes)
 		.with_files(files);
 
@@ -60,6 +78,189 @@ pub fn run(tag: &str, auto_yes: bool, repo_dir: Option<&Path>) -> Result<()> {
 
 	for pattern in patterns {
 		println!("{}", pattern);
+	}
+
+	Ok(())
+}
+
+/// Discover all available tags in the repository and show a picker for selection.
+fn select_tag_interactively(
+	repo: &gix::Repository,
+	worktree: &gix::Worktree<'_>,
+	root: &Path,
+	attribute: &str,
+) -> Result<String> {
+	let mut tag_counts: BTreeMap<String, usize> = BTreeMap::new();
+	discover_all_tags(repo, worktree, "", &mut tag_counts, attribute)?;
+
+	if tag_counts.is_empty() {
+		anyhow::bail!(
+			"no '{}' attributes found in {}; ensure .gitattributes files define the '{}' attribute",
+			attribute,
+			root.display(),
+			attribute
+		);
+	}
+
+	let attributes: Vec<picker::AttributeRow> = tag_counts
+		.into_iter()
+		.map(|(name, count)| picker::AttributeRow::new(name, count))
+		.collect();
+
+	let data = picker::SearchData::new()
+		.with_context(root.display().to_string())
+		.with_attributes(attributes);
+
+	let outcome = picker::SearchUi::new(data)
+		.with_input_title("Select a project tag")
+		.with_ui_config(picker::UiConfig::tags_and_files())
+		.run()?;
+
+	if !outcome.accepted {
+		anyhow::bail!("aborted by user");
+	}
+
+	match outcome.selection {
+		Some(picker::SearchSelection::Attribute(attr)) => Ok(attr.name),
+		Some(picker::SearchSelection::File(_)) => {
+			anyhow::bail!("unexpected file selection; please select a tag")
+		}
+		None => {
+			// User typed a custom query without selecting an item - use the query as the tag
+			if outcome.query.trim().is_empty() {
+				anyhow::bail!("no tag selected");
+			}
+			Ok(outcome.query.trim().to_owned())
+		}
+	}
+}
+
+/// Recursively discover all unique tags/attributes in the repository and submodules.
+fn discover_all_tags(
+	repo: &gix::Repository,
+	worktree: &gix::Worktree<'_>,
+	prefix: &str,
+	tag_counts: &mut BTreeMap<String, usize>,
+	attribute: &str,
+) -> Result<()> {
+	let base_display = worktree.base().display().to_string();
+	let mut attr_stack = worktree
+		.attributes(None)
+		.with_context(|| format!("failed to load git attribute stack for {}", base_display))?;
+	let mut outcome = attr_stack.selected_attribute_matches([attribute]);
+
+	let index = repo.open_index().with_context(|| {
+		format!(
+			"failed to load git index for repository at {}",
+			base_display
+		)
+	})?;
+
+	let mut processed_submodules: BTreeSet<String> = BTreeSet::new();
+
+	for entry in index.entries() {
+		let path = entry.path(&index);
+		let path_display = path.to_str_lossy();
+		let local_path = path_display.as_ref();
+
+		if entry.mode == gix::index::entry::Mode::COMMIT {
+			processed_submodules.insert(local_path.to_owned());
+			let submodule_worktree_path = worktree.base().join(local_path);
+			if !submodule_worktree_path.exists() {
+				continue;
+			}
+
+			let (sub_repo, _) =
+				git::open_repository(Some(&submodule_worktree_path)).with_context(|| {
+					format!(
+						"failed to open submodule at {}",
+						submodule_worktree_path.display()
+					)
+				})?;
+			let sub_worktree = git::require_worktree(&sub_repo).with_context(|| {
+				format!(
+					"submodule at {} is bare; a worktree is required for this operation",
+					submodule_worktree_path.display()
+				)
+			})?;
+
+			let next_prefix = if prefix.is_empty() {
+				local_path.to_owned()
+			} else {
+				format!("{}/{}", prefix, local_path)
+			};
+
+			discover_all_tags(&sub_repo, &sub_worktree, &next_prefix, tag_counts, attribute)?;
+			continue;
+		}
+
+		let platform = attr_stack
+			.at_entry(path, Some(entry.mode))
+			.with_context(|| {
+				format!(
+					"failed to evaluate attributes for {}",
+					if prefix.is_empty() {
+						local_path.to_owned()
+					} else {
+						format!("{}/{}", prefix, local_path)
+					}
+				)
+			})?;
+		if platform.matching_attributes(&mut outcome)
+			&& let Some(attr_state) = outcome.iter_selected().next().map(|m| m.assignment.state)
+		{
+			match attr_state {
+				StateRef::Unspecified | StateRef::Unset => {}
+				StateRef::Set => {
+					*tag_counts.entry("global".to_owned()).or_insert(0) += 1;
+				}
+				StateRef::Value(value) => {
+					let raw = value.as_bstr().to_str_lossy();
+					for token in raw
+						.split(',')
+						.map(|token| token.trim())
+						.filter(|s| !s.is_empty())
+					{
+						*tag_counts.entry(token.to_owned()).or_insert(0) += 1;
+					}
+				}
+			}
+		}
+		outcome.reset();
+	}
+
+	for submodule_path in discover_submodules(repo, worktree)? {
+		if processed_submodules.contains(&submodule_path) {
+			continue;
+		}
+
+		let submodule_worktree_path = worktree.base().join(&submodule_path);
+		if !submodule_worktree_path.exists() {
+			continue;
+		}
+
+		let (sub_repo, _) =
+			git::open_repository(Some(&submodule_worktree_path)).with_context(|| {
+				format!(
+					"failed to open submodule at {}",
+					submodule_worktree_path.display()
+				)
+			})?;
+		let sub_worktree = git::require_worktree(&sub_repo).with_context(|| {
+			format!(
+				"submodule at {} is bare; a worktree is required for this operation",
+				submodule_worktree_path.display()
+			)
+		})?;
+
+		let next_prefix = if prefix.is_empty() {
+			submodule_path.clone()
+		} else {
+			format!("{}/{}", prefix, submodule_path)
+		};
+
+		discover_all_tags(&sub_repo, &sub_worktree, &next_prefix, tag_counts, attribute)?;
+		processed_submodules.insert(submodule_path);
 	}
 
 	Ok(())
@@ -204,12 +405,13 @@ fn collect_repository<'repo>(
 	tag: &str,
 	prefix: &str,
 	state: &mut CollectState,
+	attribute: &str,
 ) -> Result<()> {
 	let base_display = worktree.base().display().to_string();
 	let mut attr_stack = worktree
 		.attributes(None)
 		.with_context(|| format!("failed to load git attribute stack for {}", base_display))?;
-	let mut outcome = attr_stack.selected_attribute_matches(["projects"]);
+	let mut outcome = attr_stack.selected_attribute_matches([attribute]);
 
 	let index = repo.open_index().with_context(|| {
 		format!(
@@ -252,7 +454,7 @@ fn collect_repository<'repo>(
 				format!("{}/{}", prefix, local_path)
 			};
 
-			collect_repository(&sub_repo, &sub_worktree, tag, &next_prefix, state)?;
+			collect_repository(&sub_repo, &sub_worktree, tag, &next_prefix, state, attribute)?;
 			continue;
 		}
 
@@ -318,9 +520,10 @@ fn collect_repository<'repo>(
 			format!("{}/{}", prefix, submodule_path)
 		};
 
-		collect_repository(&sub_repo, &sub_worktree, tag, &next_prefix, state)?;
+		collect_repository(&sub_repo, &sub_worktree, tag, &next_prefix, state, attribute)?;
 		processed_submodules.insert(submodule_path);
 	}
 
 	Ok(())
 }
+
